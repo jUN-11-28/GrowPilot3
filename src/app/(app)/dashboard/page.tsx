@@ -53,7 +53,7 @@ export default async function DashboardPage() {
                 <div className="min-w-0 space-y-1.5">
                   <div className="flex items-center gap-2.5">
                     <h2 className="truncate text-[15px] font-semibold">{project.name}</h2>
-                    <Badge>{PROJECT_STAGE_LABEL[project.stage]}</Badge>
+                    <Badge>자가 입력 · {PROJECT_STAGE_LABEL[project.stage]}</Badge>
                   </div>
                   <p className="line-clamp-1 text-[13px] text-ink-secondary">
                     {project.problem}

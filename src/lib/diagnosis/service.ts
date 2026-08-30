@@ -7,14 +7,21 @@ import {
   questionSystem,
 } from "@/lib/ai/prompts/question";
 import type { AttachmentSummary, DiagnosisContext } from "@/lib/ai/context";
-import { ALLOWED_ATTACHMENT_MIME_TYPES, MAX_ATTACHMENT_BYTES } from "@/lib/domain/constants";
+import {
+  ALLOWED_ATTACHMENT_MIME_TYPES,
+  MAX_ATTACHMENT_BYTES,
+  MIN_RESOURCE_CANDIDATES,
+  type BottleneckTag,
+} from "@/lib/domain/constants";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Database,
   DiagnosisAnswerRow,
   DiagnosisSessionRow,
+  GrowthStage,
   ProjectAttachmentRow,
   ProjectRow,
+  ResourceRow,
 } from "@/lib/types/database";
 
 type Client = SupabaseClient<Database>;
@@ -137,4 +144,53 @@ export async function generateQuestionBatch(
     throw new Error(`질문을 저장하지 못했습니다: ${error?.message ?? "unknown"}`);
   }
   return data;
+}
+
+/**
+ * Retrieval for the Resource Agent.
+ *
+ * The catalogue is searched by the *confirmed bottleneck's* tags — not by the
+ * founder's profile, and not by handing the model the whole catalogue. The
+ * stage pass only widens a search that came back too thin to choose from, and
+ * tag matches always stay ahead of stage matches so the ranking the model sees
+ * already reflects the bottleneck.
+ */
+export async function searchResourcesByBottleneck(
+  supabase: Client,
+  { tags, stage }: { tags: BottleneckTag[]; stage: GrowthStage },
+): Promise<ResourceRow[]> {
+  const found = new Map<string, ResourceRow>();
+
+  const add = (rows: ResourceRow[] | null) => {
+    for (const row of rows ?? []) if (!found.has(row.id)) found.set(row.id, row);
+  };
+
+  if (tags.length > 0) {
+    const { data } = await supabase
+      .from("resources")
+      .select("*")
+      .overlaps("bottleneck_tags", tags)
+      .order("created_at", { ascending: true });
+    add(data);
+  }
+
+  if (found.size < MIN_RESOURCE_CANDIDATES) {
+    const { data } = await supabase
+      .from("resources")
+      .select("*")
+      .contains("stage_tags", [stage])
+      .order("created_at", { ascending: true });
+    add(data);
+  }
+
+  // Never leave the agent with nothing to choose from.
+  if (found.size === 0) {
+    const { data } = await supabase
+      .from("resources")
+      .select("*")
+      .order("created_at", { ascending: true });
+    add(data);
+  }
+
+  return [...found.values()];
 }

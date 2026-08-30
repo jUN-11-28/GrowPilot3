@@ -38,6 +38,12 @@ const FIXTURES: Record<string, unknown> = {
         strength: "weak",
       },
     ],
+    unverified_hypotheses: [
+      {
+        statement: "[MOCK] 타깃 고객이 이 문제에 돈을 낼 것이다",
+        why_unverified: "가격을 제시받은 고객이 아직 한 명도 없다.",
+      },
+    ],
     missing_evidence: [
       {
         label: "[MOCK] 고객 인터뷰 기록",
@@ -69,6 +75,7 @@ const FIXTURES: Record<string, unknown> = {
       statement: "[MOCK] 타깃 고객이 이 문제를 돈이나 시간을 들여 해결할 만큼 아프게 느끼는지 아직 확인되지 않았다",
       stage: "problem",
       reason: "선행 단계의 전제가 비어 있어 후행 단계 지표는 의미를 갖지 못한다.",
+      evidence_gap: "Problem 단계의 최소 증거인 고객 인터뷰 기록과 문제 발생 빈도가 하나도 없다.",
       supporting_evidence: ["창업자가 문제를 구체적으로 기술함"],
       missing_evidence: ["고객 인터뷰 5건 이상", "문제 발생 빈도"],
     },
@@ -89,6 +96,9 @@ const FIXTURES: Record<string, unknown> = {
       "[MOCK] 타깃 고객이 이 문제를 돈을 내고 해결할 만큼 아프게 느끼는지 아직 확인되지 않았다",
     bottleneck_reason:
       "[MOCK] 이 가정이 참이 아니면 이후의 제품·채널 판단이 모두 무의미해지기 때문이다.",
+    evidence_gap:
+      "[MOCK] Problem 단계의 최소 증거(고객 인터뷰, 문제 발생 빈도)가 하나도 확보되지 않았다.",
+    bottleneck_tags: ["problem_evidence", "willingness_to_pay"],
     supporting_evidence: ["문제 정의가 구체적임"],
     missing_evidence: ["고객 인터뷰", "문제 발생 빈도", "현재 대안에 지불 중인 비용"],
     lean_analyst_opinion: "[MOCK] 지금은 만들 때가 아니라 확인할 때다.",
@@ -101,11 +111,21 @@ const FIXTURES: Record<string, unknown> = {
         "The Mom Test 방식으로 과거 행동만 묻는다",
         "인터뷰 내용을 표로 정리한다",
       ],
+      verification_method:
+        "인터뷰마다 '최근 1개월 내 발생 여부'와 '현재 지불 중인 비용'을 표 한 줄로 기록하고, 14일 뒤 표를 센다.",
       success_criteria: ["8명 인터뷰 완료", "5명 이상이 최근 1개월 내 문제 경험을 진술"],
-      duration: "2주",
+      stop_condition:
+        "[MOCK] 15명에게 요청했는데 인터뷰 성사가 2건 이하면 타깃 고객 정의부터 다시 잡는다.",
     },
+  },
+  resource: {
+    strategy: "[MOCK] 제품을 더 만들기 전에 문제 존재를 1차 기록으로 확인한다.",
     // 자원 · 전문가 · 도구가 한 번씩 나오도록 고정한 값.
-    recommended_resource_numbers: [1, 17, 24],
+    picks: [
+      { number: 1, reason: "[MOCK] 인터뷰에서 유도 질문을 피하는 기준서로 쓴다." },
+      { number: 2, reason: "[MOCK] 인터뷰 대상자 섭외와 일정 조율에 쓴다." },
+      { number: 3, reason: "[MOCK] 인용 가능한 원문을 남기기 위해 쓴다." },
+    ],
   },
 };
 

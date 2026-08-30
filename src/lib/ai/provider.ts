@@ -12,7 +12,8 @@ export type AgentKind =
   | "stage"
   | "bottleneck"
   | "red_team"
-  | "synthesis";
+  | "synthesis"
+  | "resource";
 
 /**
  * "none" disables Gemini's thinking pass entirely (thinkingBudget: 0), which

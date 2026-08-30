@@ -358,7 +358,7 @@ function AnalysisProgress({
       <div className="space-y-2">
         <h1 className="text-[22px] font-semibold tracking-tight">진단을 분석하고 있습니다</h1>
         <p className="text-sm leading-relaxed text-ink-secondary">
-          다섯 명의 분석가가 차례로 검토합니다. 1~2분 정도 걸립니다.
+          역할이 다른 {PIPELINE_STEPS.length}개의 에이전트가 차례로 검토합니다. 1~2분 정도 걸립니다.
         </p>
       </div>
       <ol className="overflow-hidden rounded-xl border border-line bg-surface">

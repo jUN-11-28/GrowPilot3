@@ -42,19 +42,109 @@ export const EVIDENCE_TYPES: Option<EvidenceType>[] = [
 ];
 
 /**
- * 진단 단계 모델. 선행 단계의 Evidence가 부족하면 후행 단계보다 먼저 병목 후보가 된다.
+ * 진단 단계 모델.
+ *
+ * 성장 단계는 사업자 등록 연차나 창업자의 자기 선언이 아니라 "확보된 Evidence
+ * 수준"으로 판정한다. 각 단계는 다음 단계로 넘어가기 위해 필요한 최소 증거
+ * (exitCriteria)를 가지며, 창업자가 확보한 증거와 이 기준의 차이가 Evidence Gap이다.
+ * 병목은 그 Gap이 가장 크게 벌어진 가장 이른 단계에서 고른다.
  */
-export const GROWTH_STAGES: Option<GrowthStage>[] = [
-  { value: "problem", label: "Problem", description: "풀 만한 가치가 있는 문제가 실재하는가" },
-  { value: "solution", label: "Solution", description: "이 해결책이 그 문제를 실제로 해소하는가" },
-  { value: "validation", label: "Validation", description: "고객이 행동(사용·지불)으로 증명했는가" },
-  { value: "pmf", label: "PMF", description: "재사용·잔존이 스스로 유지되는가" },
-  { value: "growth", label: "Growth", description: "반복 가능한 획득 경로가 있는가" },
+export interface GrowthStageSpec extends Option<GrowthStage> {
+  /** 이 단계가 답해야 하는 질문 */
+  keyQuestion: string;
+  /** 이 단계에서 볼 수 있는 대표 Evidence */
+  representativeEvidence: string[];
+  /** 다음 단계로 넘어가기 위한 최소 증거 */
+  exitCriteria: string;
+}
+
+export const GROWTH_STAGES: GrowthStageSpec[] = [
+  {
+    value: "problem",
+    label: "Problem",
+    description: "풀 만한 가치가 있는 문제가 실재하는가",
+    keyQuestion: "실제 고객 문제가 존재하는가?",
+    representativeEvidence: ["고객 인터뷰", "문제 발생 빈도"],
+    exitCriteria:
+      "타깃 고객 다수가 최근에 실제로 그 문제를 겪었다는 1차 기록(인터뷰·관찰)과 문제 발생 빈도",
+  },
+  {
+    value: "solution",
+    label: "Solution",
+    description: "이 해결책이 그 문제를 실제로 해소하는가",
+    keyQuestion: "이 해결책을 고객이 원하는가?",
+    representativeEvidence: ["MVP 반응", "사용 의향"],
+    exitCriteria:
+      "이 해결책을 본 고객의 실제 반응 — 사용 시도, 사전 등록, 사용 의향 표명",
+  },
+  {
+    value: "validation",
+    label: "Validation",
+    description: "고객이 행동(사용·지불)으로 증명했는가",
+    keyQuestion: "실제 사용·구매 행동이 나타나는가?",
+    representativeEvidence: ["가입 전환", "결제", "반복 사용"],
+    exitCriteria: "말이 아닌 행동 데이터 — 가입 전환율, 결제, 반복 사용 기록",
+  },
+  {
+    value: "pmf",
+    label: "PMF",
+    description: "재사용·잔존이 스스로 유지되는가",
+    keyQuestion: "반복적으로 선택하고 유지하는가?",
+    representativeEvidence: ["리텐션", "재구매", "Churn"],
+    exitCriteria:
+      "코호트 리텐션이 평평해지거나 재구매·갱신이 유지된다는 데이터",
+  },
+  {
+    value: "growth",
+    label: "Growth",
+    description: "반복 가능한 획득 경로가 있는가",
+    keyQuestion: "확장 가능한 성장 구조가 있는가?",
+    representativeEvidence: ["CAC", "LTV", "Referral"],
+    exitCriteria: "획득 비용과 고객 가치가 계산되고, 반복 가능한 채널이 특정됨",
+  },
 ];
 
 export const GROWTH_STAGE_ORDER: GrowthStage[] = GROWTH_STAGES.map((s) => s.value);
 
 export const MAX_QUESTIONS = 8;
+
+/**
+ * 실험은 항상 14일 단위다. 모델이 기간을 고르지 않는다 — 기간은 고정 제약이고,
+ * 모델이 맞춰야 하는 것은 "14일 안에 끝낼 수 있는 범위"다.
+ */
+export const EXPERIMENT_DURATION_DAYS = 14;
+export const EXPERIMENT_DURATION_LABEL = `${EXPERIMENT_DURATION_DAYS}일`;
+
+/**
+ * 자원 검색에 쓰는 병목 태그 어휘. `resources.bottleneck_tags` 에 실제로 저장된
+ * 값과 1:1로 맞춰져 있다 — 여기 없는 태그로 검색하면 아무것도 걸리지 않는다.
+ */
+export const BOTTLENECK_TAGS = [
+  { value: "problem_evidence", label: "문제 존재 근거 부재" },
+  { value: "customer_definition", label: "타깃 고객 정의 불명확" },
+  { value: "interview_quality", label: "고객 대화의 질" },
+  { value: "solution_fit", label: "해결책 적합성 미검증" },
+  { value: "mvp_scope", label: "MVP 범위·미구현" },
+  { value: "positioning", label: "메시지·포지셔닝" },
+  { value: "willingness_to_pay", label: "지불 의사 미검증" },
+  { value: "pricing", label: "가격 결정" },
+  { value: "monetization", label: "수익화 구조" },
+  { value: "acquisition", label: "고객 확보·유입" },
+  { value: "channel", label: "채널 탐색" },
+  { value: "activation", label: "첫 사용 활성화" },
+  { value: "retention", label: "리텐션 저하" },
+  { value: "pmf_signal", label: "PMF 신호 확인" },
+  { value: "customer_feedback", label: "사용 후 피드백 수집" },
+  { value: "measurement", label: "지표 계측 부재" },
+  { value: "experiment_design", label: "실험 설계" },
+] as const;
+
+export type BottleneckTag = (typeof BOTTLENECK_TAGS)[number]["value"];
+
+export const BOTTLENECK_TAG_VALUES = BOTTLENECK_TAGS.map((t) => t.value) as [
+  BottleneckTag,
+  ...BottleneckTag[],
+];
 
 /** 사업기획서·재무제표·고민 등 첨부 자료의 분류. */
 export const ATTACHMENT_KINDS: Option<AttachmentKind>[] = [
@@ -137,6 +227,12 @@ export const RESOURCE_TYPE_LABEL: Record<ResourceType, string> = {
 };
 
 export const MAX_RECOMMENDED_RESOURCES = 5;
+
+/**
+ * Below this many bottleneck-tag matches the search widens to the stage, so the
+ * Resource Agent is never forced to choose out of one or two rows.
+ */
+export const MIN_RESOURCE_CANDIDATES = 6;
 
 export function groupResources<T extends { resource_type: ResourceType }>(
   resources: T[],

@@ -3,7 +3,11 @@ import { getOptionalUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { runDiagnosisPipeline } from "@/lib/ai/pipeline";
 import type { PipelineStep } from "@/lib/ai/steps";
-import { buildContext, loadAttachmentFiles } from "@/lib/diagnosis/service";
+import {
+  buildContext,
+  loadAttachmentFiles,
+  searchResourcesByBottleneck,
+} from "@/lib/diagnosis/service";
 
 /** The pipeline runs five sequential model calls; give it room. */
 export const maxDuration = 300;
@@ -43,27 +47,27 @@ export async function POST(_request: NextRequest, { params }: Params) {
     return streamOf([{ type: "done", resultId: existing.id }]);
   }
 
-  const [{ data: project }, { data: answers }, { data: resources }, { data: attachments }] =
-    await Promise.all([
-      supabase
-        .from("projects")
-        .select("*")
-        .eq("id", session.project_id)
-        .eq("user_id", user.id)
-        .maybeSingle(),
-      supabase
-        .from("diagnosis_answers")
-        .select("*")
-        .eq("session_id", sessionId)
-        .eq("user_id", user.id)
-        .order("order_index", { ascending: true }),
-      supabase.from("resources").select("*").order("created_at", { ascending: true }),
-      supabase
-        .from("project_attachments")
-        .select("*")
-        .eq("project_id", session.project_id)
-        .eq("user_id", user.id),
-    ]);
+  // Resources are not prefetched: the Resource Agent searches them mid-pipeline,
+  // once the bottleneck has been confirmed and turned into search tags.
+  const [{ data: project }, { data: answers }, { data: attachments }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("*")
+      .eq("id", session.project_id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("diagnosis_answers")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("user_id", user.id)
+      .order("order_index", { ascending: true }),
+    supabase
+      .from("project_attachments")
+      .select("*")
+      .eq("project_id", session.project_id)
+      .eq("user_id", user.id),
+  ]);
 
   if (!project) {
     return NextResponse.json({ error: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
@@ -88,7 +92,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
         const outcome = await runDiagnosisPipeline({
           context: buildContext(project, answers ?? [], attachmentRows),
-          resources: resources ?? [],
+          searchResources: (query) => searchResourcesByBottleneck(supabase, query),
           attachmentFiles,
           onStep: (step: PipelineStep, phase, detail) =>
             send({ type: "step", step, phase, detail }),

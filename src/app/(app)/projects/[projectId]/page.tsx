@@ -69,7 +69,7 @@ export default async function ProjectPage({
           <div className="space-y-2.5">
             <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
             <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-muted">
-              <Badge>{PROJECT_STAGE_LABEL[project.stage]}</Badge>
+              <Badge>자가 입력 · {PROJECT_STAGE_LABEL[project.stage]}</Badge>
               <span>생성 {formatDate(project.created_at)}</span>
             </div>
           </div>
@@ -105,7 +105,10 @@ export default async function ProjectPage({
       ) : null}
 
       <Card>
-        <CardHeader title="프로젝트 정보" description="진단은 이 정보에서 시작합니다." />
+        <CardHeader
+          title="프로젝트 정보"
+          description="진단은 이 정보에서 시작합니다. 단계와 Evidence는 참고용 입력일 뿐, 실제 성장 단계는 확보된 근거로 다시 판정합니다."
+        />
         <CardBody className="space-y-6">
           <Detail term="해결하려는 문제">{project.problem}</Detail>
           <Detail term="타깃 고객">{project.target_customer}</Detail>

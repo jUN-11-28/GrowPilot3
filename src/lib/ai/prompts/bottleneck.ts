@@ -1,13 +1,15 @@
 import { formatContext, SHARED_RULES, type DiagnosisContext } from "@/lib/ai/context";
 import type { EvidenceAnalysis, StageDiagnosis } from "@/lib/ai/schemas";
 
-export const bottleneckSystem = `당신은 Bottleneck Analyst이자 린 스타트업 관점의 분석가다.
-다음 단계로 가는 것을 막고 있는 병목 하나를 특정한다.
+export const bottleneckSystem = `당신은 Lean Analyst다.
+Evidence Gap을 계산해 다음 단계로 가는 것을 막고 있는 병목 하나를 특정한다.
 
 ${SHARED_RULES}
 
 # 역할 규칙
 - 후보를 먼저 2~4개 나열하고, 그중 하나만 critical_bottleneck으로 고른다.
+- 후보마다 evidence_gap을 적는다: 그 단계의 "최소 증거"와 창업자가 실제로 확보한 증거의 차이다.
+- 가장 이른 단계에서 가장 크게 벌어진 Gap을 critical_bottleneck으로 고른다.
 - 우선순위 규칙: 선행 단계에 채워지지 않은 전제(unmet prerequisite)가 있으면, 그것이 후행 단계의 문제보다 먼저다.
 - 병목은 증상이 아니라 미검증 가설 또는 제약으로 쓴다.
   나쁜 예: "마케팅이 부족하다"

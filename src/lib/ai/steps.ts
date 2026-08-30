@@ -8,14 +8,16 @@ export const PIPELINE_STEPS = [
   "bottleneck",
   "red_team",
   "synthesis",
+  "resource",
 ] as const;
 
 export type PipelineStep = (typeof PIPELINE_STEPS)[number];
 
 export const STEP_LABEL: Record<PipelineStep, string> = {
-  evidence: "Evidence Analyst",
+  evidence: "Evidence Agent",
   stage: "Stage Diagnoser",
-  bottleneck: "Bottleneck Analyst",
-  red_team: "Red Team",
+  bottleneck: "Lean Analyst",
+  red_team: "Red Team Agent",
   synthesis: "Strategy Synthesizer",
+  resource: "Resource Agent",
 };

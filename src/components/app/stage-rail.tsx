@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { GROWTH_STAGES } from "@/lib/domain/constants";
 import { cn } from "@/lib/utils";
 import type { GrowthStage } from "@/lib/types/database";
@@ -47,9 +46,4 @@ export function StageRail({ current }: { current: GrowthStage }) {
       })}
     </ol>
   );
-}
-
-export function StageBadge({ stage }: { stage: GrowthStage }) {
-  const label = GROWTH_STAGES.find((s) => s.value === stage)?.label ?? stage;
-  return <Badge tone="accent">{label}</Badge>;
 }

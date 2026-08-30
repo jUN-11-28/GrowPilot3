@@ -119,12 +119,24 @@ export type DiagnosisResultRow = {
   created_at: string;
 }
 
+/**
+ * The 14-day mission. `duration` is not part of it: the period is a fixed
+ * product constraint (EXPERIMENT_DURATION_DAYS), not something the model picks.
+ *
+ * `verification_method` / `stop_condition` were added after the first reports
+ * were written, and `next_experiment` is JSONB, so rows created before that
+ * lack them. They stay optional here and the report renders them conditionally
+ * — reading an old report must not throw.
+ */
 export type NextExperiment = {
   title: string;
   hypothesis: string;
   method: string[];
+  verification_method?: string;
   success_criteria: string[];
-  duration: string;
+  stop_condition?: string;
+  /** Legacy rows only. New results have no model-chosen duration. */
+  duration?: string;
 }
 
 export type ProjectAttachmentRow = {

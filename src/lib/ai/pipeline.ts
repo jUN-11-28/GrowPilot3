@@ -6,6 +6,7 @@ import {
   BottleneckAnalysisSchema,
   EvidenceAnalysisSchema,
   RedTeamSchema,
+  ResourceSelectionSchema,
   StageDiagnosisSchema,
   SynthesisSchema,
   type BottleneckAnalysis,
@@ -25,18 +26,38 @@ import {
   buildSynthesizerPrompt,
   synthesizerSystem,
 } from "@/lib/ai/prompts/synthesizer";
+import { buildResourcePrompt, resourceSystem } from "@/lib/ai/prompts/resource";
 import { buildPriorityHint } from "@/lib/domain/bottleneck";
-import { MAX_RECOMMENDED_RESOURCES } from "@/lib/domain/constants";
+import {
+  BOTTLENECK_TAG_VALUES,
+  MAX_RECOMMENDED_RESOURCES,
+} from "@/lib/domain/constants";
 import type { PipelineStep } from "@/lib/ai/steps";
-import type { ResourceRow } from "@/lib/types/database";
+import type { BottleneckTag } from "@/lib/domain/constants";
+import type { GrowthStage, ResourceRow } from "@/lib/types/database";
 
 export { PIPELINE_STEPS, STEP_LABEL, type PipelineStep } from "@/lib/ai/steps";
+
+/**
+ * Every role's raw output, stored on the result row. This is what the report's
+ * AI C-Level Board renders — the board is a view of these five, not a sixth
+ * analysis of its own.
+ */
+export interface ResourceTrace {
+  strategy: string;
+  /** Reasons keyed by resource id, so the report can pair each pick with its why. */
+  picks: { resource_id: string; reason: string }[];
+  /** How many rows the bottleneck-tag search returned before the model chose. */
+  candidate_count: number;
+}
 
 export interface AgentTrace {
   evidence: EvidenceAnalysis;
   stage: StageDiagnosis;
   bottleneck: BottleneckAnalysis;
   red_team: RedTeamReview;
+  synthesis: Synthesis;
+  resource: ResourceTrace;
 }
 
 export interface PipelineResult {
@@ -45,6 +66,12 @@ export interface PipelineResult {
   recommendedResourceIds: string[];
 }
 
+/** Retrieval hook: resources are searched by the *confirmed* bottleneck's tags. */
+export type ResourceSearch = (query: {
+  tags: BottleneckTag[];
+  stage: GrowthStage;
+}) => Promise<ResourceRow[]>;
+
 /** Keeps the live progress feed to one short line per agent. */
 function truncate(text: string, max = 160): string {
   const trimmed = text.trim().replace(/\s+/g, " ");
@@ -52,21 +79,25 @@ function truncate(text: string, max = 160): string {
 }
 
 /**
- * User Input → Evidence Analyst → Stage Diagnoser → Bottleneck Analyst
- * → Red Team → Strategy Synthesizer → Final Result.
+ * Evidence → Stage → Bottleneck → Red Team → Strategy Synthesizer → Resource.
+ *
+ * The Resource Agent runs *after* the synthesizer, not before it: the brief
+ * defines its job as searching for resources that solve the **confirmed**
+ * bottleneck, and the bottleneck is only confirmed once the synthesizer has
+ * reconciled the analyst with the red team.
  *
  * Deliberately a plain sequential function: each role is an isolated
  * prompt + schema, and the orchestration is readable top to bottom.
  */
 export async function runDiagnosisPipeline({
   context,
-  resources,
+  searchResources,
   attachmentFiles = [],
   onStep,
 }: {
   context: DiagnosisContext;
-  resources: ResourceRow[];
-  /** Uploaded attachments, read only by the Evidence Analyst. */
+  searchResources: ResourceSearch;
+  /** Uploaded attachments, read only by the Evidence Agent. */
   attachmentFiles?: InlineFile[];
   onStep?: (
     step: PipelineStep,
@@ -136,34 +167,71 @@ export async function runDiagnosisPipeline({
     (v) => v.counterargument,
   );
 
-  const synthesis = await run("synthesis", () =>
-    provider.generateStructured({
-      kind: "synthesis",
-      system: synthesizerSystem,
-      prompt: buildSynthesizerPrompt(
-        context,
-        evidence,
-        stage,
-        bottleneck,
-        redTeam,
-        resources,
-      ),
-      schema: SynthesisSchema,
-      maxTokens: 16000,
-    }),
+  const synthesis = await run(
+    "synthesis",
+    () =>
+      provider.generateStructured({
+        kind: "synthesis",
+        system: synthesizerSystem,
+        prompt: buildSynthesizerPrompt(context, evidence, stage, bottleneck, redTeam),
+        schema: SynthesisSchema,
+        maxTokens: 16000,
+      }),
+    (v) => v.critical_bottleneck,
   );
+
+  // Retrieval happens here, with the confirmed bottleneck's tags as the query —
+  // never against the founder's profile or the whole catalogue. Tags the
+  // catalogue doesn't use are dropped; the search widens rather than failing.
+  const known = new Set<string>(BOTTLENECK_TAG_VALUES);
+  const candidates = await searchResources({
+    tags: synthesis.bottleneck_tags.filter((tag): tag is BottleneckTag =>
+      known.has(tag),
+    ),
+    stage: synthesis.current_stage,
+  });
+
+  const selection = await run(
+    "resource",
+    () =>
+      provider.generateStructured({
+        kind: "resource",
+        system: resourceSystem,
+        prompt: buildResourcePrompt(context, synthesis, candidates),
+        schema: ResourceSelectionSchema,
+        effort: "low",
+      }),
+    (v) => v.strategy,
+  );
+
+  // The model picks list positions, never ids — an out-of-range pick is
+  // dropped instead of producing a dangling reference.
+  const seen = new Set<string>();
+  const picks: ResourceTrace["picks"] = [];
+  for (const pick of selection.picks) {
+    const resource = candidates[pick.number - 1];
+    if (!resource || seen.has(resource.id)) continue;
+    seen.add(resource.id);
+    picks.push({ resource_id: resource.id, reason: pick.reason });
+    if (picks.length === MAX_RECOMMENDED_RESOURCES) break;
+  }
 
   return {
     synthesis,
-    trace: { evidence, stage, bottleneck, red_team: redTeam },
-    // The model picks list positions, never ids — an out-of-range pick is
-    // dropped instead of producing a dangling reference.
-    recommendedResourceIds: [
-      ...new Set(
-        synthesis.recommended_resource_numbers
-          .map((n) => resources[n - 1]?.id)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ].slice(0, MAX_RECOMMENDED_RESOURCES),
+    trace: {
+      evidence,
+      stage,
+      bottleneck,
+      red_team: redTeam,
+      // Kept whole so fields the result columns don't carry (evidence_gap,
+      // bottleneck_tags) survive for the report to render.
+      synthesis,
+      resource: {
+        strategy: selection.strategy,
+        picks,
+        candidate_count: candidates.length,
+      },
+    },
+    recommendedResourceIds: picks.map((pick) => pick.resource_id),
   };
 }
