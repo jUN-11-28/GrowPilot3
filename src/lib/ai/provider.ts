@@ -95,8 +95,17 @@ interface ModelThinkingProfile {
   resolve: (effort: Effort) => ThinkingConfigValue;
 }
 
+/**
+ * `none` maps to LOW, not MINIMAL: gemini-3.8-flash rejects MINIMAL outright
+ * ("Thinking level MINIMAL is not supported for this model", 400
+ * INVALID_ARGUMENT), and LOW is the lowest level it actually accepts. That
+ * rejection hit every `effort: "none"` call — which is the whole question
+ * -generation step (see diagnosis/service.ts), i.e. the first model call of
+ * every diagnosis. A model that does support MINIMAL can be given its own
+ * entry in KNOWN_MODEL_THINKING rather than changing this mapping.
+ */
 const GEMINI_3_LEVEL_BY_EFFORT: Record<Effort, ThinkingLevel> = {
-  none: ThinkingLevel.MINIMAL,
+  none: ThinkingLevel.LOW,
   low: ThinkingLevel.LOW,
   medium: ThinkingLevel.MEDIUM,
   high: ThinkingLevel.HIGH,
@@ -186,10 +195,40 @@ export function normalizeNullableAnyOf(node: unknown): unknown {
   return result;
 }
 
+/**
+ * Strips every `maxItems` from a converted JSON Schema.
+ *
+ * Gemini compiles `responseJsonSchema` into a constrained-decoding grammar and
+ * *unrolls* bounded arrays: an array with `maxItems: N` whose items are objects
+ * with P fields costs on the order of N×P grammar states, summed across the
+ * whole schema. Past a threshold (measured against gemini-3.8-flash at roughly
+ * 300 of those units) the API rejects the request outright with a bare
+ * `400 INVALID_ARGUMENT / "Request contains an invalid argument."` — no
+ * indication of which argument, and it fails before generating a single token.
+ * `EvidenceAnalysisV2Schema` and `SynthesisV2Schema` were both over that line;
+ * dropping their `maxItems` puts them comfortably under it with no other change.
+ *
+ * The caps themselves are not lost: the Zod schema still carries `.max(n)` and
+ * still enforces it when the *response* is parsed (see `tryParse`), which is
+ * the only place the bound actually protects anything. `minItems` is left in
+ * place — a lower bound forces no unrolling, and it is what keeps
+ * `method`/`success_criteria` from coming back empty.
+ */
+export function stripMaxItems(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(stripMaxItems);
+  if (node === null || typeof node !== "object") return node;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key === "maxItems") continue;
+    result[key] = stripMaxItems(value);
+  }
+  return result;
+}
+
 export function toResponseSchema(schema: z.ZodType<unknown>): unknown {
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
   delete jsonSchema.$schema;
-  return normalizeNullableAnyOf(jsonSchema);
+  return stripMaxItems(normalizeNullableAnyOf(jsonSchema));
 }
 
 // ---------------------------------------------------------------------------

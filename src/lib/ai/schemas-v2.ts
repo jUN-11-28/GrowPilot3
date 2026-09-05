@@ -155,6 +155,8 @@ const missingEvidenceItemV2 = z.object({
 export const EvidenceAnalysisV2Schema = z.object({
   // A generous operational cap (not part of the spec) so one call can't
   // return an unbounded amount of text; nothing in the brief limits this.
+  // Enforced when parsing the response, never sent to the model — see
+  // `toResponseSchema` in provider.ts for why `maxItems` must not reach the API.
   available_evidence: z.array(availableEvidenceItemV2).max(40),
   unverified_hypotheses: z
     .array(

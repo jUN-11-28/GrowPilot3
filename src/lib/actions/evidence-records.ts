@@ -585,7 +585,11 @@ export async function analyzeEvidenceRecord(
 
     revalidatePath(`/projects/${record.project_id}`);
     return { saved: true };
-  } catch {
+  } catch (error) {
+    console.error(
+      `[evidence-record] analyze failed record=${record.id} project=${record.project_id}`,
+      error,
+    );
     await finalizeEvidenceAnalysis(supabase, record.id, runId, { analysis_status: "failed" });
     revalidatePath(`/projects/${record.project_id}`);
     return { error: "AI 정리에 실패했습니다. 다시 시도해 주세요." };

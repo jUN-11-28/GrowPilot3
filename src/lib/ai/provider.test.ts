@@ -15,9 +15,20 @@ test("resolveThinkingConfig maps every effort level to thinkingLevel (not thinki
   }
 });
 
-test('resolveThinkingConfig maps "none" to MINIMAL, not to a Gemini-2.5-style disabled budget', () => {
+// gemini-3.8-flash rejects MINIMAL outright ("Thinking level MINIMAL is not
+// supported for this model", 400 INVALID_ARGUMENT), so "none" resolves to the
+// lowest level it actually accepts. Every `effort: "none"` call — the whole
+// question-generation step — 400'd until this mapping changed.
+test('resolveThinkingConfig maps "none" to LOW (the lowest level this model accepts), never to a Gemini-2.5-style disabled budget', () => {
   const config = resolveThinkingConfig("gemini-3.8-flash", "none");
-  assert.deepEqual(config, { thinkingLevel: ThinkingLevel.MINIMAL });
+  assert.deepEqual(config, { thinkingLevel: ThinkingLevel.LOW });
+});
+
+test("resolveThinkingConfig never emits MINIMAL for the shipped model at any effort level", () => {
+  for (const effort of ["none", "low", "medium", "high"] as const) {
+    const config = resolveThinkingConfig("gemini-3.8-flash", effort);
+    assert.notDeepEqual(config, { thinkingLevel: ThinkingLevel.MINIMAL });
+  }
 });
 
 test("resolveThinkingConfig uses thinkingBudget for a known Gemini-2.5 model instead", () => {
@@ -81,6 +92,45 @@ test("toResponseSchema strips $schema and applies the nullable normalization end
   const result = toResponseSchema(schema) as Record<string, unknown>;
   assert.equal("$schema" in result, false);
   assert.deepEqual((result.properties as Record<string, unknown>).maybe, { type: ["string", "null"] });
+});
+
+// --- maxItems must never reach the API -------------------------------------
+// Gemini unrolls bounded arrays into its decoding grammar; a schema whose
+// maxItems values add up past its budget is rejected as a bare
+// 400 INVALID_ARGUMENT before a token is generated. See toResponseSchema.
+
+function findKeyDeep(node: unknown, key: string): boolean {
+  if (Array.isArray(node)) return node.some((n) => findKeyDeep(n, key));
+  if (node === null || typeof node !== "object") return false;
+  return Object.entries(node as Record<string, unknown>).some(
+    ([k, v]) => k === key || findKeyDeep(v, key),
+  );
+}
+
+test("toResponseSchema removes every maxItems, however deeply nested", () => {
+  const schema = z.object({
+    outer: z
+      .array(
+        z.object({
+          inner: z.array(z.object({ deep: z.array(z.string()).max(9) })).max(5),
+        }),
+      )
+      .max(30),
+  });
+  assert.equal(findKeyDeep(z.toJSONSchema(schema), "maxItems"), true, "zod emits maxItems");
+  assert.equal(findKeyDeep(toResponseSchema(schema), "maxItems"), false, "but it never reaches the API");
+});
+
+test("toResponseSchema keeps minItems — a lower bound costs nothing and is what stops empty arrays", () => {
+  const schema = z.object({ method: z.array(z.string()).min(1).max(8) });
+  assert.equal(findKeyDeep(toResponseSchema(schema), "minItems"), true);
+});
+
+test("the Zod schema still enforces the cap when parsing a response, even though the model was never told it", () => {
+  const schema = z.object({ tags: z.array(z.string()).max(2) });
+  assert.equal(findKeyDeep(toResponseSchema(schema), "maxItems"), false);
+  assert.equal(tryParse(schema, JSON.stringify({ tags: ["a", "b", "c"] })).ok, false);
+  assert.equal(tryParse(schema, JSON.stringify({ tags: ["a", "b"] })).ok, true);
 });
 
 // --- failure classification: JSON parse vs Zod validation -------------------
