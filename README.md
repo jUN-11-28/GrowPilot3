@@ -17,7 +17,7 @@
 - Next.js 16 (App Router, Server Components 기본, `proxy.ts`) · React 19 · TypeScript strict
 - Tailwind CSS v4 · Lucide Icons
 - Supabase (Auth · PostgreSQL · Row Level Security · `@supabase/ssr`)
-- Google Gemini `gemini-3.7-flash` (structured JSON output, Zod 검증)
+- Google Gemini `gemini-3.8-flash` (structured JSON output, Zod 검증)
 
 ## 설정
 
@@ -31,7 +31,7 @@ cp .env.example .env.local   # 값을 채운다
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | publishable key (`sb_publishable_...`). legacy anon JWT를 쓰지 않는다. |
 | `GEMINI_API_KEY` | 서버에서만 사용. 브라우저 번들에 포함되지 않는다. |
-| `GEMINI_MODEL` | 선택. 기본값 `gemini-3.7-flash` |
+| `GEMINI_MODEL` | 선택. 기본값 `gemini-3.8-flash` |
 | `AI_PROVIDER` | `gemini`(기본) 또는 `mock` |
 
 secret key / service role key는 이 앱 어디에서도 읽지 않습니다.

@@ -37,5 +37,5 @@ export function geminiApiKey(): string {
 
 /** Overridable so a model rename does not require a code change. */
 export function geminiModel(): string {
-  return process.env.GEMINI_MODEL || "gemini-3.7-flash";
+  return process.env.GEMINI_MODEL || "gemini-3.8-flash";
 }
