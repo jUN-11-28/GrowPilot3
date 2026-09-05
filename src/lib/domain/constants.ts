@@ -1,9 +1,12 @@
 import type {
   AttachmentKind,
+  BusinessModel,
   EvidenceType,
   GrowthStage,
   ProjectStage,
   ResourceType,
+  TechnicalMaturity,
+  TechnologyType,
 } from "@/lib/types/database";
 
 export interface Option<T extends string> {
@@ -146,6 +149,159 @@ export const BOTTLENECK_TAG_VALUES = BOTTLENECK_TAGS.map((t) => t.value) as [
   ...BottleneckTag[],
 ];
 
+/**
+ * v2 전용 추가 병목 태그. 기존 17개(BOTTLENECK_TAGS)는 v1 파이프라인이 그대로
+ * 쓰므로 건드리지 않는다 — 1인 기술 창업자(하드웨어·로보틱스 등)에게 필요한
+ * 태그만 더한다. 이 태그로 검색했을 때 실제로 걸리는 자원은 아직 없을 수 있고,
+ * 그 경우 Resource Agent는 no_match를 반환해야 한다 — 가짜 자원을 만들어
+ * 채우지 않는다.
+ */
+export const BOTTLENECK_TAGS_V2_EXTRA = [
+  { value: "technical_feasibility", label: "기술 실현 가능성 미검증" },
+  { value: "prototype_reliability", label: "프로토타입 신뢰성·재현성" },
+  { value: "pilot_access", label: "파일럿·시험 환경 접근" },
+  { value: "delivery_scalability", label: "생산·공급 확장성" },
+  { value: "operational_reliability", label: "운영 안정성" },
+  { value: "cash_runway", label: "자금 소진 기한" },
+] as const;
+
+export type BottleneckTagV2 = BottleneckTag | (typeof BOTTLENECK_TAGS_V2_EXTRA)[number]["value"];
+
+export const BOTTLENECK_TAGS_V2 = [...BOTTLENECK_TAGS, ...BOTTLENECK_TAGS_V2_EXTRA] as ReadonlyArray<{
+  value: BottleneckTagV2;
+  label: string;
+}>;
+
+export const BOTTLENECK_TAG_VALUES_V2 = BOTTLENECK_TAGS_V2.map((t) => t.value) as [
+  BottleneckTagV2,
+  ...BottleneckTagV2[],
+];
+
+/**
+ * v2 TechnicalContext — 1인 기술 창업자의 기술 유형·판매 방식을 서버가 구조화해
+ * 프롬프트에 전달하기 위한 값 목록. "MVP를 출시한 SaaS 창업자"만을 전제하지
+ * 않도록 소프트웨어 외 유형을 동등하게 다룬다. 마지막 옵션은 항상 모름/기타다.
+ */
+export const TECHNOLOGY_TYPES: Option<TechnologyType>[] = [
+  { value: "software", label: "소프트웨어", description: "웹·앱·백엔드 등 코드로 동작하는 제품" },
+  { value: "ai_ml", label: "AI·ML", description: "모델·데이터 파이프라인이 핵심인 제품" },
+  { value: "hardware", label: "하드웨어", description: "물리적 장치·전자·기구 설계가 핵심인 제품" },
+  { value: "robotics", label: "로보틱스", description: "센서·구동·제어가 결합된 자율/반자율 장치" },
+  { value: "biotech_medtech", label: "바이오·의료기기", description: "임상·인허가 절차가 관여하는 제품" },
+  { value: "other_unknown", label: "기타/모름", description: "위에 해당하지 않거나 아직 정하지 못함" },
+];
+
+export const BUSINESS_MODELS: Option<BusinessModel>[] = [
+  { value: "b2b", label: "B2B", description: "기업·조직이 구매를 결정" },
+  { value: "b2c", label: "B2C", description: "개인 소비자가 구매를 결정" },
+  { value: "b2b2c", label: "B2B2C", description: "기업을 통해 최종 개인 사용자에게 도달" },
+  { value: "unknown", label: "모름", description: "아직 판매 구조를 정하지 못함" },
+];
+
+export const TECHNICAL_MATURITIES: Option<TechnicalMaturity>[] = [
+  { value: "concept", label: "개념 단계", description: "설계·시뮬레이션만 있고 실물/코드가 없음" },
+  { value: "prototype", label: "프로토타입", description: "동작하는 시제품이 있으나 반복 검증 전" },
+  { value: "pilot_tested", label: "파일럿 테스트", description: "제한된 환경·인원으로 실제 시험을 마침" },
+  { value: "shipped", label: "출시됨", description: "실제 사용자에게 전달되어 쓰이고 있음" },
+  { value: "scaled", label: "양산·확장", description: "반복 생산 또는 다수 배포 체계를 갖춤" },
+  { value: "unknown", label: "모름", description: "아직 판단하기 이름" },
+];
+
+/**
+ * v2 readiness dimensions (StageDiagnosisV2 / SynthesisV2 §2.3). Replaces v1's
+ * linear GROWTH_STAGES exitCriteria as the thing evidence is checked against —
+ * v2 reports readiness per dimension instead of a single stage-gap score, and
+ * none of these six is inherently "earlier" than another.
+ */
+export const READINESS_DIMENSIONS_V2 = [
+  { value: "technical_feasibility", label: "기술 실현 가능성" },
+  { value: "customer_problem", label: "고객 문제 실재성" },
+  { value: "solution_value", label: "해결책 가치" },
+  { value: "commercial_validation", label: "구매·도입 검증" },
+  { value: "repeat_use", label: "반복 사용" },
+  { value: "delivery_scalability", label: "공급·운영 확장성" },
+] as const;
+
+export type ReadinessDimensionV2 = (typeof READINESS_DIMENSIONS_V2)[number]["value"];
+
+export const READINESS_DIMENSION_VALUES_V2 = READINESS_DIMENSIONS_V2.map((d) => d.value) as [
+  ReadinessDimensionV2,
+  ...ReadinessDimensionV2[],
+];
+
+export const READINESS_DIMENSION_LABEL_V2 = Object.fromEntries(
+  READINESS_DIMENSIONS_V2.map((d) => [d.value, d.label]),
+) as Record<ReadinessDimensionV2, string>;
+
+export const READINESS_STATUS_LABEL_V2: Record<string, string> = {
+  supported: "근거로 뒷받침됨",
+  partial: "부분적으로 뒷받침됨",
+  not_supported: "반대 근거 있음",
+  unknown: "모름",
+  not_applicable: "해당 없음",
+};
+
+/**
+ * v2 replaces "Critical Bottleneck" (a label that implies certainty) with one
+ * of these three, chosen by `diagnosis_status` — see prompt doc §2.4/§2.6.
+ */
+export const DIAGNOSIS_STATUS_LABEL_V2: Record<string, string> = {
+  observed_issue: "확인된 문제",
+  suspected_cause: "의심되는 원인",
+  insufficient_information: "우선 확인할 과제",
+};
+
+export const ACTION_TYPE_LABEL_V2: Record<string, string> = {
+  customer_experiment: "고객 실험",
+  technical_test: "기술 시험",
+  measurement_setup: "측정 준비",
+  operational_fix: "운영 수정",
+  clarification: "추가 확인",
+};
+
+export const CRITERIA_STATUS_LABEL_V2: Record<string, string> = {
+  user_provided: "창업자가 제시한 기준",
+  source_supported: "자료로 뒷받침된 기준",
+  proposed: "이번에 제안하는 잠정 기준",
+};
+
+export const FEASIBILITY_STATUS_LABEL_V2: Record<string, string> = {
+  fits: "현재 여건에 맞음",
+  needs_confirmation: "핵심 제약 확인 필요",
+};
+
+export const RED_TEAM_VERDICT_LABEL_V2: Record<string, string> = {
+  holds: "판단 유지",
+  revise: "범위 수정",
+  replace: "과제 교체",
+  insufficient_evidence: "판단 보류",
+};
+
+export const RESOURCE_STATUS_LABEL_V2: Record<string, string> = {
+  available: "바로 활용 가능",
+  not_needed: "외부 도움 불필요",
+  no_match: "맞는 자원 없음",
+  needs_verification: "이용 조건 확인 필요",
+  lookup_failed: "자원 조회 실패",
+};
+
+export const TECHNOLOGY_TYPE_LABEL = labelMap(TECHNOLOGY_TYPES);
+export const BUSINESS_MODEL_LABEL = labelMap(BUSINESS_MODELS);
+export const TECHNICAL_MATURITY_LABEL = labelMap(TECHNICAL_MATURITIES);
+
+export const TECHNOLOGY_TYPE_VALUES = TECHNOLOGY_TYPES.map((t) => t.value) as [
+  TechnologyType,
+  ...TechnologyType[],
+];
+export const BUSINESS_MODEL_VALUES = BUSINESS_MODELS.map((b) => b.value) as [
+  BusinessModel,
+  ...BusinessModel[],
+];
+export const TECHNICAL_MATURITY_VALUES = TECHNICAL_MATURITIES.map((m) => m.value) as [
+  TechnicalMaturity,
+  ...TechnicalMaturity[],
+];
+
 /** 사업기획서·재무제표·고민 등 첨부 자료의 분류. */
 export const ATTACHMENT_KINDS: Option<AttachmentKind>[] = [
   { value: "business_plan", label: "사업기획서", description: "사업 개요, 전략, 로드맵 문서" },
@@ -233,6 +389,9 @@ export const MAX_RECOMMENDED_RESOURCES = 5;
  * Resource Agent is never forced to choose out of one or two rows.
  */
 export const MIN_RESOURCE_CANDIDATES = 6;
+
+/** Hard cap on how many candidates a search hands the Resource Agent, even after widening. */
+export const MAX_RESOURCE_CANDIDATES_RETURNED = 30;
 
 export function groupResources<T extends { resource_type: ResourceType }>(
   resources: T[],

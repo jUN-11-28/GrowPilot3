@@ -6,13 +6,24 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getProject } from "@/lib/data/projects";
-import { getSession, getResult, listAnswers } from "@/lib/data/diagnosis";
+import {
+  getSession,
+  getResult,
+  listAnswers,
+  listExperimentRunsByProject,
+} from "@/lib/data/diagnosis";
 import { listAttachments } from "@/lib/data/attachments";
 import {
+  claimQuestionGeneration,
+  finalizeQuestionGeneration,
   generateQuestionBatch,
+  generateQuestionBatchV2,
   loadAttachmentFiles,
   pendingQuestion,
 } from "@/lib/diagnosis/service";
+import { buildContextV2 } from "@/lib/ai/context-v2";
+import { diagnosisSchemaVersion } from "@/lib/env";
+import { listResultsByProject } from "@/lib/data/diagnosis";
 import { MAX_QUESTIONS } from "@/lib/domain/constants";
 import type { DiagnosisAnswerRow, QuestionType } from "@/lib/types/database";
 
@@ -33,6 +44,8 @@ export type DiagnosisStep =
       maxQuestions: number;
     }
   | { type: "ready"; askedCount: number; maxQuestions: number }
+  /** A question batch is being generated elsewhere (this request, or a concurrent one) — the client should wait and retry, never call the model itself. */
+  | { type: "generating_questions" }
   | { type: "completed" }
   | { type: "error"; message: string };
 
@@ -107,12 +120,51 @@ export async function advanceDiagnosis(sessionId: string): Promise<DiagnosisStep
     return { type: "ready", askedCount, maxQuestions: session.max_questions };
   }
 
+  // Zero answer rows is ambiguous on its own — it means "never generated" AND
+  // "generated a batch that happened to contain zero questions." question_status
+  // disambiguates them, so a refresh after a legitimate zero-question batch
+  // does not call the model again.
+  if (session.question_status === "completed") {
+    return { type: "ready", askedCount, maxQuestions: session.max_questions };
+  }
+
   const supabase = await createClient();
+
+  const runId = await claimQuestionGeneration(supabase, sessionId, user.id);
+  if (!runId) {
+    // Another request (this tab reloaded mid-flight, or a second tab) holds
+    // a live claim — never call the model twice for the same session.
+    return { type: "generating_questions" };
+  }
 
   try {
     const attachments = await listAttachments(project.id, user.id);
-    const files = await loadAttachmentFiles(supabase, attachments);
-    const planned = await generateQuestionBatch(supabase, session, project, attachments, files);
+    const planned =
+      diagnosisSchemaVersion() === 2
+        ? await (async () => {
+            const { files, results } = await loadAttachmentFiles(supabase, attachments);
+            const priorResults = (await listResultsByProject(project.id, user.id)).filter(
+              (r) => r.session_id !== sessionId,
+            );
+            const experimentRunRows = await listExperimentRunsByProject(project.id, user.id);
+            const context = buildContextV2({
+              project,
+              answers: [],
+              attachmentRows: attachments,
+              attachmentLoadResults: results,
+              priorResults,
+              experimentRunRows,
+              nowIso: new Date().toISOString(),
+            });
+            return generateQuestionBatchV2(supabase, session, context, files);
+          })()
+        : await (async () => {
+            const { files } = await loadAttachmentFiles(supabase, attachments);
+            return generateQuestionBatch(supabase, session, project, attachments, files);
+          })();
+
+    await finalizeQuestionGeneration(supabase, sessionId, runId, "completed");
+
     const first = pendingQuestion(planned);
     if (!first) {
       return { type: "ready", askedCount, maxQuestions: session.max_questions };
@@ -124,7 +176,11 @@ export async function advanceDiagnosis(sessionId: string): Promise<DiagnosisStep
       maxQuestions: session.max_questions,
     };
   } catch (error) {
-    // A concurrent request may have inserted the same batch first.
+    await finalizeQuestionGeneration(supabase, sessionId, runId, "failed");
+
+    // A concurrent request may have inserted the same batch first (the
+    // insert-level unique constraint is still the last line of defense even
+    // with the claim above).
     const fresh = pendingQuestion(await listAnswers(sessionId, user.id));
     if (fresh) {
       return {

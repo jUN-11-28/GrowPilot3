@@ -1,10 +1,8 @@
 import {
   ArrowLeft,
-  BookOpen,
   Boxes,
   Check,
   CircleHelp,
-  ExternalLink,
   FlaskConical,
   Minus,
   OctagonX,
@@ -12,8 +10,6 @@ import {
   Ruler,
   Target,
   Users,
-  UserRound,
-  Wrench,
 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -26,16 +22,12 @@ import { requireUser } from "@/lib/auth";
 import { getSession, getResult, listAnswers, listResources } from "@/lib/data/diagnosis";
 import { getProject } from "@/lib/data/projects";
 import { parseAgentTrace, RED_TEAM_VERDICT_LABEL } from "@/lib/ai/trace";
-import {
-  EXPERIMENT_DURATION_LABEL,
-  groupResources,
-  GROWTH_STAGE_LABEL,
-  RESOURCE_TYPE_LABEL,
-} from "@/lib/domain/constants";
+import { EXPERIMENT_DURATION_LABEL, GROWTH_STAGE_LABEL } from "@/lib/domain/constants";
 import { formatDate } from "@/lib/utils";
 import { VerificationForm } from "./verification-form";
-import type { ComponentType, ReactNode } from "react";
-import type { GrowthStage, ResourceRow } from "@/lib/types/database";
+import { BoardRow, EvidenceList, ResourceRecommendations, Row, Section } from "./report-ui";
+import { ResultV2 } from "./result-v2";
+import type { GrowthStage } from "@/lib/types/database";
 
 export const metadata: Metadata = { title: "진단 리포트" };
 
@@ -59,6 +51,20 @@ export default async function ResultPage({
   if (!result) notFound();
 
   const resources = await listResources(result.recommended_resource_ids);
+
+  if (result.schema_version === 2) {
+    return (
+      <ResultV2
+        projectId={projectId}
+        sessionId={sessionId}
+        project={project}
+        result={result}
+        answers={answers}
+        resources={resources}
+      />
+    );
+  }
+
   const experiment = result.next_experiment;
   const trace = parseAgentTrace(result.agent_trace);
 
@@ -192,24 +198,30 @@ export default async function ResultPage({
         <p className="mb-4 text-[13px] leading-relaxed text-ink-secondary">
           위 실험을 실제로 실행하는 데 필요한 것만 골랐습니다.
         </p>
-        <ResourceRecommendations resources={resources} reasons={pickReasons} />
+        <ResourceRecommendations
+          resources={resources}
+          reasons={pickReasons}
+          emptyMessage="이번 실험은 외부 도움 없이 창업자 혼자 실행할 수 있다고 판단했습니다."
+        />
       </Section>
 
       <Section number="04" title="현재 단계">
         <div className="space-y-6">
           <StageRail current={result.current_stage} />
-          <div className="grid gap-8 rounded-xl border border-line bg-surface p-6 sm:grid-cols-2">
-            <ConfidenceMeter
-              label="Stage Confidence"
-              value={result.stage_confidence}
-              caption="이 단계 판정을 얼마나 확신하는지"
-            />
-            <ConfidenceMeter
-              label="Evidence Confidence"
-              value={result.evidence_confidence}
-              caption="현재 근거만으로 판단할 수 있는 정도. 낮다면 사업이 나쁜 것이 아니라 아직 확인된 것이 적다는 뜻입니다."
-            />
-          </div>
+          {result.stage_confidence !== null && result.evidence_confidence !== null ? (
+            <div className="grid gap-8 rounded-xl border border-line bg-surface p-6 sm:grid-cols-2">
+              <ConfidenceMeter
+                label="Stage Confidence"
+                value={result.stage_confidence}
+                caption="이 단계 판정을 얼마나 확신하는지"
+              />
+              <ConfidenceMeter
+                label="Evidence Confidence"
+                value={result.evidence_confidence}
+                caption="현재 근거만으로 판단할 수 있는 정도. 낮다면 사업이 나쁜 것이 아니라 아직 확인된 것이 적다는 뜻입니다."
+              />
+            </div>
+          ) : null}
         </div>
       </Section>
 
@@ -384,198 +396,4 @@ export default async function ResultPage({
 function stageLabel(stage: string | undefined): string {
   if (!stage) return "-";
   return GROWTH_STAGE_LABEL[stage as GrowthStage] ?? stage;
-}
-
-function Section({
-  number,
-  title,
-  icon: Icon,
-  lead,
-  children,
-}: {
-  number: string;
-  title: string;
-  icon?: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  lead?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-5">
-      <div className="flex items-center gap-3">
-        <span className="text-[11px] tabular-nums text-ink-muted">{number}</span>
-        {Icon ? <Icon aria-hidden className="size-4 text-ink" /> : null}
-        <h2
-          className={
-            lead
-              ? "text-[13px] font-semibold uppercase tracking-[0.14em] text-ink"
-              : "text-[13px] font-medium uppercase tracking-[0.14em] text-ink-secondary"
-          }
-        >
-          {title}
-        </h2>
-        <span aria-hidden className="h-px flex-1 bg-line" />
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Row({ term, children }: { term: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-2 px-7 py-6 sm:grid-cols-[132px_1fr] sm:gap-6">
-      <dt className="text-[13px] font-medium text-ink-muted">{term}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
-
-function BoardRow({
-  role,
-  duty,
-  badge,
-  body,
-  children,
-}: {
-  role: string;
-  duty: string;
-  badge?: string;
-  body?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="space-y-3 px-6 py-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-[13px] font-semibold text-ink">{role}</h3>
-        <span className="text-xs text-ink-muted">{duty}</span>
-        {badge ? <Badge>{badge}</Badge> : null}
-      </div>
-      {body ? (
-        <p className="whitespace-pre-line text-[14px] leading-[1.75] text-ink-secondary">
-          {body}
-        </p>
-      ) : (
-        <p className="text-[13px] text-ink-muted">이 라운드에 기록된 산출이 없습니다.</p>
-      )}
-      {children}
-    </div>
-  );
-}
-
-function EvidenceList({
-  title,
-  description,
-  items,
-  emptyText,
-  marker: Marker,
-  markerClass,
-}: {
-  title: string;
-  description: string;
-  items: string[];
-  emptyText: string;
-  marker: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  markerClass: string;
-}) {
-  return (
-    <div className="space-y-4 bg-surface p-6">
-      <div className="space-y-1">
-        <h3 className="text-[13px] font-semibold text-ink">{title}</h3>
-        <p className="text-xs text-ink-muted">{description}</p>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-[13px] leading-relaxed text-ink-secondary">{emptyText}</p>
-      ) : (
-        <ul className="space-y-2.5">
-          {items.map((item, index) => (
-            <li key={`${index}-${item}`} className="flex gap-2.5 text-[14px] leading-[1.7] text-ink-secondary">
-              <Marker aria-hidden className={`mt-1 size-4 shrink-0 ${markerClass}`} />
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-const GROUP_ICON: Record<
-  string,
-  ComponentType<{ className?: string; "aria-hidden"?: boolean }>
-> = {
-  expert: UserRound,
-  tool: Wrench,
-  knowledge: BookOpen,
-};
-
-function ResourceRecommendations({
-  resources,
-  reasons,
-}: {
-  resources: ResourceRow[];
-  reasons: Map<string, string>;
-}) {
-  const groups = groupResources(resources);
-
-  if (groups.length === 0) {
-    return (
-      <p className="rounded-xl border border-dashed border-line-strong bg-surface-muted px-6 py-8 text-[13px] text-ink-secondary">
-        이번 실험은 외부 도움 없이 창업자 혼자 실행할 수 있다고 판단했습니다.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {groups.map((group) => {
-        const Icon = GROUP_ICON[group.key] ?? BookOpen;
-        return (
-          <div
-            key={group.key}
-            className="overflow-hidden rounded-xl border border-line bg-surface"
-          >
-            <div className="flex items-center gap-2.5 border-b border-line px-6 py-4">
-              <Icon aria-hidden className="size-4 text-ink" />
-              <h3 className="text-[13px] font-semibold text-ink">{group.label}</h3>
-              <span className="text-xs text-ink-muted">{group.description}</span>
-            </div>
-            <ul className="divide-y divide-line">
-              {group.items.map((resource) => {
-                const reason = reasons.get(resource.id);
-                return (
-                  <li key={resource.id} className="space-y-1.5 px-6 py-5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-[15px] font-semibold text-ink">
-                        {resource.url ? (
-                          <a
-                            href={resource.url}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="inline-flex items-center gap-1.5 underline decoration-line-strong underline-offset-4 hover:decoration-ink"
-                          >
-                            {resource.title}
-                            <ExternalLink aria-hidden className="size-3.5 text-ink-muted" />
-                          </a>
-                        ) : (
-                          resource.title
-                        )}
-                      </h4>
-                      <Badge>{RESOURCE_TYPE_LABEL[resource.resource_type]}</Badge>
-                    </div>
-                    <p className="text-[13px] leading-relaxed text-ink-secondary">
-                      {resource.description}
-                    </p>
-                    {reason ? (
-                      <p className="border-l-2 border-line pl-3 text-[13px] leading-relaxed text-ink">
-                        왜 필요한가 — {reason}
-                      </p>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        );
-      })}
-    </div>
-  );
 }

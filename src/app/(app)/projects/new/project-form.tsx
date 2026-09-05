@@ -3,13 +3,19 @@
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Choice } from "@/components/ui/choice";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Alert, Spinner } from "@/components/ui/feedback";
 import {
   createProject,
   type ProjectFormState,
 } from "@/lib/actions/projects";
-import { EVIDENCE_TYPES, PROJECT_STAGES } from "@/lib/domain/constants";
+import {
+  BUSINESS_MODELS,
+  EVIDENCE_TYPES,
+  PROJECT_STAGES,
+  TECHNICAL_MATURITIES,
+  TECHNOLOGY_TYPES,
+} from "@/lib/domain/constants";
 import type { EvidenceType, ProjectStage } from "@/lib/types/database";
 
 export function ProjectForm() {
@@ -125,6 +131,71 @@ export function ProjectForm() {
           ))}
         </div>
       </fieldset>
+
+      <details className="space-y-5 rounded-lg border border-line p-4">
+        <summary className="cursor-pointer text-[13px] font-medium text-ink">
+          기술·실행 정보 (선택 — 나중에 프로젝트 화면에서도 추가·수정할 수 있습니다)
+        </summary>
+        <p className="text-xs leading-relaxed text-ink-secondary">
+          소프트웨어·AI뿐 아니라 하드웨어·로보틱스 등 기술 유형과 판매 방식, 시간·예산
+          여건에 맞춰 진단하는 데 씁니다. 모르면 비워 두세요.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="기술 유형" htmlFor="technology_type">
+            <Select id="technology_type" name="technology_type" defaultValue="">
+              <option value="">모름 / 선택 안 함</option>
+              {TECHNOLOGY_TYPES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="판매 구조" htmlFor="business_model">
+            <Select id="business_model" name="business_model" defaultValue="">
+              <option value="">모름 / 선택 안 함</option>
+              {BUSINESS_MODELS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="기술 성숙도" htmlFor="technical_maturity">
+            <Select id="technical_maturity" name="technical_maturity" defaultValue="">
+              <option value="">모름 / 선택 안 함</option>
+              {TECHNICAL_MATURITIES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="주당 투입 가능 시간" htmlFor="hours_per_week">
+            <Input id="hours_per_week" name="hours_per_week" type="number" min={0} max={168} />
+          </Field>
+          <Field label="예산" htmlFor="budget_amount">
+            <Input id="budget_amount" name="budget_amount" type="number" min={0} />
+          </Field>
+          <Field label="예산 통화" htmlFor="budget_currency" hint="예: KRW, USD">
+            <Input id="budget_currency" name="budget_currency" />
+          </Field>
+        </div>
+        <Field
+          label="고객 접근 경로"
+          htmlFor="customer_access"
+          hint="예: 지인 네트워크, 특정 커뮤니티, 아직 없음"
+        >
+          <Textarea id="customer_access" name="customer_access" rows={2} />
+        </Field>
+        <Field
+          label="시험·검증 환경 접근성"
+          htmlFor="test_environment_access"
+          hint="예: 자체 실험실 보유, 협력 공장 통해서만 시험 가능"
+        >
+          <Textarea id="test_environment_access" name="test_environment_access" rows={2} />
+        </Field>
+      </details>
 
       <div className="flex items-center gap-3 border-t border-line pt-6">
         <Button type="submit" size="lg" disabled={pending}>

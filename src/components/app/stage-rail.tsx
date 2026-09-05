@@ -2,7 +2,20 @@ import { GROWTH_STAGES } from "@/lib/domain/constants";
 import { cn } from "@/lib/utils";
 import type { GrowthStage } from "@/lib/types/database";
 
-export function StageRail({ current }: { current: GrowthStage }) {
+/**
+ * `current: null` is a valid diagnosis (no evidence supports ranking a stage
+ * at all — see DiagnosisResultRow.current_stage) and must render as an
+ * explicit "판단 보류" state, never fall back to the first/earliest stage.
+ */
+export function StageRail({ current }: { current: GrowthStage | null }) {
+  if (current === null) {
+    return (
+      <div className="rounded-lg border border-dashed border-line-strong bg-surface-muted px-5 py-4 text-[13px] leading-relaxed text-ink-secondary">
+        현재 단계 판단 보류 — 어느 단계로도 근거를 배정할 만큼 확보된 근거가 아직 없습니다.
+      </div>
+    );
+  }
+
   const currentIndex = GROWTH_STAGES.findIndex((s) => s.value === current);
 
   return (

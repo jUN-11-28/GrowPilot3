@@ -8,6 +8,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/feedback";
 import { DeleteProjectButton } from "./delete-project-button";
 import { AttachmentsPanel } from "./attachments-panel";
+import { TechnicalContextPanel } from "./technical-context-panel";
 import { requireUser } from "@/lib/auth";
 import { findProject, getProject } from "@/lib/data/projects";
 import { listResultsByProject, listSessions } from "@/lib/data/diagnosis";
@@ -124,6 +125,20 @@ export default async function ProjectPage({
               </span>
             )}
           </Detail>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="기술·실행 정보"
+          description="기술 유형과 판매 방식, 시간·예산·접근 여건입니다. 모두 선택 항목이며 진단이 사업 유형에 맞게 분석하는 데 씁니다."
+        />
+        <CardBody>
+          <TechnicalContextPanel
+            projectId={project.id}
+            technicalContext={project.technical_context}
+            executionConstraints={project.execution_constraints}
+          />
         </CardBody>
       </Card>
 

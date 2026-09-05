@@ -18,7 +18,7 @@ import type { SessionStatus } from "@/lib/types/database";
 type Phase = "loading" | "question" | "analyzing" | "error";
 
 interface RunEvent {
-  type: "step" | "done" | "error";
+  type: "step" | "done" | "error" | "in_progress";
   step?: PipelineStep;
   phase?: "start" | "done";
   detail?: string;
@@ -69,6 +69,13 @@ export function DiagnosisRunner({
   const [activeStep, setActiveStep] = useState<PipelineStep | null>(null);
   const [feed, setFeed] = useState<FeedEntry[]>([]);
   const analysisStarted = useRef(false);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
+  }, []);
 
   const runAnalysis = useCallback(async () => {
     if (analysisStarted.current) return;
@@ -118,6 +125,14 @@ export function DiagnosisRunner({
             return;
           } else if (event.type === "error") {
             throw new Error(event.message ?? "분석에 실패했습니다.");
+          } else if (event.type === "in_progress") {
+            // Another request already holds the analysis claim (a concurrent
+            // tab, or this session's own earlier request that hasn't
+            // finished yet) — stay on the "analyzing" screen and check again
+            // shortly, rather than treating this as success or failure.
+            analysisStarted.current = false;
+            pollTimeoutRef.current = setTimeout(() => void runAnalysis(), 3000);
+            return;
           }
         }
       }
@@ -141,6 +156,14 @@ export function DiagnosisRunner({
       } else if (next.type === "ready") {
         setAskedCount(next.askedCount);
         void runAnalysis();
+      } else if (next.type === "generating_questions") {
+        // Another request (this tab reloaded mid-flight, or a second tab)
+        // holds the claim on generating this session's questions — wait and
+        // check again rather than calling the model ourselves.
+        setPhase("loading");
+        pollTimeoutRef.current = setTimeout(() => {
+          void advanceDiagnosis(sessionId).then(applyStep);
+        }, 1500);
       } else if (next.type === "completed") {
         router.replace(`/projects/${projectId}/diagnosis/${sessionId}/result`);
       } else {

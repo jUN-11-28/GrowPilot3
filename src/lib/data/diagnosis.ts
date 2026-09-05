@@ -7,6 +7,7 @@ import type {
   DiagnosisAnswerRow,
   DiagnosisResultRow,
   DiagnosisSessionRow,
+  ExperimentRunRow,
   ProjectRow,
   ResourceRow,
 } from "@/lib/types/database";
@@ -120,5 +121,24 @@ export async function listResultsByProject(
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(`진단 결과를 불러오지 못했습니다: ${error.message}`);
+  return data ?? [];
+}
+
+/** v2 — recent experiment_runs for a project, most recent first, for context-v2's `experimentRunRows`. */
+export async function listExperimentRunsByProject(
+  projectId: string,
+  userId: string,
+  limit = 5,
+): Promise<ExperimentRunRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("experiment_runs")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(`실험 실행 기록을 불러오지 못했습니다: ${error.message}`);
   return data ?? [];
 }

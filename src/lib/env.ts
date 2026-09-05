@@ -39,3 +39,18 @@ export function geminiApiKey(): string {
 export function geminiModel(): string {
   return process.env.GEMINI_MODEL || "gemini-3.8-flash";
 }
+
+/**
+ * v2 activation flag. Defaults to `1` (the live v1 pipeline) — the v2
+ * pipeline (pipeline-v2.ts) is fully implemented and can be exercised in
+ * development, but is not the default path for real users until it has been
+ * through Stages 3–4 (resource-metadata polish, run-locking, retry/timeout
+ * handling) and this default is deliberately changed.
+ *
+ * Set `DIAGNOSIS_SCHEMA_VERSION=2` in the environment to opt in locally.
+ * Any other value falls back to `1` rather than failing closed loudly, since
+ * an unrecognised value here is far more likely to be a typo than intent.
+ */
+export function diagnosisSchemaVersion(): 1 | 2 {
+  return process.env.DIAGNOSIS_SCHEMA_VERSION === "2" ? 2 : 1;
+}
