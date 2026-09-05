@@ -25,7 +25,8 @@ export type AgentKind =
   | "bottleneck_v2"
   | "red_team_v2"
   | "synthesis_v2"
-  | "resource_v2";
+  | "resource_v2"
+  | "evidence_record_v2";
 
 /** "none" asks for the fastest available thinking setting — see `resolveThinkingConfig`. */
 export type Effort = "none" | "low" | "medium" | "high";

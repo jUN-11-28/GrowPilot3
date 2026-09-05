@@ -10,11 +10,22 @@ import {
   PROJECT_STAGE_VALUES,
 } from "@/lib/domain/constants";
 import { ExecutionConstraintsSchema, TechnicalContextSchema } from "@/lib/ai/schemas-v2";
-import type { EvidenceType, ProjectStage } from "@/lib/types/database";
+import { countEvidenceRecordsByType } from "@/lib/data/evidence-records";
+import { getProject } from "@/lib/data/projects";
+import { EVIDENCE_LABEL } from "@/lib/domain/constants";
+import type { EvidenceRecordType, EvidenceType, ProjectStage } from "@/lib/types/database";
 
 export interface ProjectFormState {
   error?: string;
   fieldErrors?: Record<string, string>;
+  /**
+   * Set on success instead of redirecting immediately — the client still has
+   * queued evidence-record drafts (title/body/selected files) in memory that
+   * would be silently lost by a navigation, so it uploads them first (see
+   * project-form.tsx) and navigates to `/projects/${projectId}` itself once
+   * that settles.
+   */
+  projectId?: string;
 }
 
 const projectSchema = z.object({
@@ -108,7 +119,7 @@ export async function createProject(
   }
 
   revalidatePath("/dashboard");
-  redirect(`/projects/${data.id}`);
+  return { projectId: data.id };
 }
 
 export async function deleteProject(formData: FormData) {
@@ -131,6 +142,7 @@ export async function deleteProject(formData: FormData) {
 
 export interface ProjectContextFormState {
   error?: string;
+  saved?: boolean;
 }
 
 /** Empty input means "not answered" (null), never 0 or the empty string — an unanswered number field is not the same claim as "0". */
@@ -181,5 +193,60 @@ export async function updateProjectContext(
   }
 
   revalidatePath(`/projects/${projectId}`);
-  return {};
+  return { saved: true };
+}
+
+export interface ProjectEvidenceFormState {
+  error?: string;
+  saved?: boolean;
+}
+
+/**
+ * Edits `projects.evidence` from the project detail page (the create form
+ * only sets the initial selection). Never deletes evidence_records by itself
+ * — a type that still has registered detail cannot be unselected; the
+ * founder must delete or reassign those records first (prompt doc §2:
+ * "Evidence 선택 해제만으로 기존 자료를 삭제하지 마라").
+ */
+export async function updateProjectEvidenceTypes(
+  _prev: ProjectEvidenceFormState,
+  formData: FormData,
+): Promise<ProjectEvidenceFormState> {
+  const user = await requireUser();
+  const projectId = String(formData.get("projectId") ?? "");
+  if (!projectId) return { error: "프로젝트를 찾을 수 없습니다." };
+
+  const project = await getProject(projectId, user.id);
+
+  const rawEvidence = formData.getAll("evidence").map(String);
+  const parsed = z
+    .array(z.enum(EVIDENCE_VALUES as [EvidenceType, ...EvidenceType[]]))
+    .safeParse(rawEvidence.includes("none") ? ["none"] : rawEvidence);
+  if (!parsed.success) return { error: "입력값을 확인해 주세요." };
+
+  const nextEvidence = parsed.data;
+  const removed = project.evidence.filter((item) => !nextEvidence.includes(item));
+
+  if (removed.length > 0) {
+    const counts = await countEvidenceRecordsByType(projectId, user.id);
+    const blocked = removed.filter((item) => (counts[item as EvidenceRecordType] ?? 0) > 0);
+    if (blocked.length > 0) {
+      const labels = blocked.map((item) => EVIDENCE_LABEL[item]).join(", ");
+      return {
+        error: `${labels}에 등록된 자료가 있어 바로 해제할 수 없습니다. 아래에서 해당 자료를 먼저 삭제하거나 다른 종류로 옮겨 주세요.`,
+      };
+    }
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("projects")
+    .update({ evidence: nextEvidence })
+    .eq("id", projectId)
+    .eq("user_id", user.id);
+
+  if (error) return { error: "저장하지 못했습니다. 다시 시도해 주세요." };
+
+  revalidatePath(`/projects/${projectId}`);
+  return { saved: true };
 }

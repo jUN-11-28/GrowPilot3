@@ -363,6 +363,37 @@ const FIXTURES: Record<string, unknown> = {
     ],
     empty_reason: null,
   },
+
+  evidence_record_v2: {
+    what: "[MOCK] 잠재 고객 인터뷰 3건 원문 기록",
+    when_text: "지난주",
+    who_description: "타깃 고객 정의에 부합하는 소상공인",
+    interview_count: { value: 3, known: true },
+    unique_participant_count: { value: 3, known: true },
+    purpose: "문제가 실제로 발생하는지, 현재 어떻게 임시로 해결하는지 확인",
+    method: ["대면 인터뷰", "The Mom Test 방식으로 과거 행동만 질문"],
+    key_results: ["3명 모두 최근 1개월 내 재고 손실을 경험했다고 답함"],
+    metrics: [
+      {
+        label: "최근 1개월 내 문제 경험",
+        value: "3/3",
+        unit: null,
+        source_refs: [],
+      },
+    ],
+    quotes: [
+      {
+        text: "[MOCK] 매주 폐기하는 재고가 아까운데 일일이 세는 게 너무 번거로워요.",
+        speaker_role: "카페 운영자",
+        source_refs: [],
+      },
+    ],
+    conflicting_points: [],
+    unknowns: ["지불 의사는 아직 확인하지 못함"],
+    duplicate_suspected: { suspected: false, reason: null },
+    purchase_signal: null,
+    summary: "[MOCK] 인터뷰 3건 모두 문제 실재를 뒷받침하지만 지불 의사는 아직 확인되지 않았다.",
+  },
 };
 
 export const mockProvider: AIProvider = {

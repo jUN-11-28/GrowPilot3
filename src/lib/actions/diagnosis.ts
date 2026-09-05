@@ -13,6 +13,7 @@ import {
   listExperimentRunsByProject,
 } from "@/lib/data/diagnosis";
 import { listAttachments } from "@/lib/data/attachments";
+import { listEvidenceRecordAttachmentLinks, listEvidenceRecords } from "@/lib/data/evidence-records";
 import {
   claimQuestionGeneration,
   finalizeQuestionGeneration,
@@ -147,6 +148,10 @@ export async function advanceDiagnosis(sessionId: string): Promise<DiagnosisStep
               (r) => r.session_id !== sessionId,
             );
             const experimentRunRows = await listExperimentRunsByProject(project.id, user.id);
+            const [evidenceRecordRows, evidenceRecordAttachmentRows] = await Promise.all([
+              listEvidenceRecords(project.id, user.id),
+              listEvidenceRecordAttachmentLinks(project.id, user.id),
+            ]);
             const context = buildContextV2({
               project,
               answers: [],
@@ -154,6 +159,8 @@ export async function advanceDiagnosis(sessionId: string): Promise<DiagnosisStep
               attachmentLoadResults: results,
               priorResults,
               experimentRunRows,
+              evidenceRecordRows,
+              evidenceRecordAttachmentRows,
               nowIso: new Date().toISOString(),
             });
             return generateQuestionBatchV2(supabase, session, context, files);

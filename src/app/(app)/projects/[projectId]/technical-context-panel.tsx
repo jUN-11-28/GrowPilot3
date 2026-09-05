@@ -38,6 +38,18 @@ export function TechnicalContextPanel({
     {},
   );
 
+  // A successful save leaves edit mode so the read view picks up the fresh
+  // props `revalidatePath` brought in — without this, the form stayed open
+  // showing stale `defaultValue`s and looked like the save did nothing.
+  // Adjusted during render (React's documented alternative to an effect for
+  // reacting to a changed value) rather than in a useEffect, which would
+  // cause an extra cascading render for the same outcome.
+  const [handledState, setHandledState] = useState(state);
+  if (state !== handledState) {
+    setHandledState(state);
+    if (state.saved) setEditing(false);
+  }
+
   if (!editing) {
     return (
       <div className="space-y-4">

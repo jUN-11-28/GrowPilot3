@@ -1,10 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  EvidenceRecordDraftV2Schema,
   ExecutionConstraintsSchema,
   NextExperimentV2Schema,
   SynthesisV2Schema,
   TechnicalContextSchema,
+  UserEvidenceContextSchema,
 } from "./schemas-v2";
 
 // --- 14일 실행 vs 관찰 기간 구분 (scenario #6): the bound is structural, not just prompt wording ---
@@ -104,5 +106,83 @@ test("SynthesisV2Schema.bottleneck_tags accepts any string (allowed-list enforce
 
 test("SynthesisV2Schema.bottleneck_tags caps at 3 entries", () => {
   const result = SynthesisV2Schema.shape.bottleneck_tags.safeParse(["a", "b", "c", "d"]);
+  assert.equal(result.success, false);
+});
+
+// --- Evidence records (Evidence별 근거 자료 등록) ----------------------------
+
+test("UserEvidenceContextSchema defaults every field to null (missing input never becomes a guessed 0 or empty string)", () => {
+  const result = UserEvidenceContextSchema.safeParse({});
+  assert.equal(result.success, true);
+  if (result.success) {
+    assert.equal(result.data.occurred_at, null);
+    assert.equal(result.data.target_description, null);
+    assert.equal(result.data.interview_count, null);
+    assert.equal(result.data.unique_participant_count, null);
+  }
+});
+
+test("UserEvidenceContextSchema rejects a negative headcount rather than silently clamping it", () => {
+  const result = UserEvidenceContextSchema.safeParse({ interview_count: -1 });
+  assert.equal(result.success, false);
+});
+
+function evidenceDraft(overrides: Partial<Parameters<typeof EvidenceRecordDraftV2Schema.parse>[0]> = {}) {
+  return {
+    what: null,
+    when_text: null,
+    who_description: null,
+    interview_count: { value: null, known: false },
+    unique_participant_count: { value: null, known: false },
+    purpose: null,
+    method: [],
+    key_results: [],
+    metrics: [],
+    quotes: [],
+    conflicting_points: [],
+    unknowns: [],
+    duplicate_suspected: { suspected: false, reason: null },
+    purchase_signal: null,
+    summary: "요약",
+    ...overrides,
+  };
+}
+
+test("EvidenceRecordDraftV2Schema accepts a count marked known:false with value:null (\"모름\", never a fabricated number)", () => {
+  const result = EvidenceRecordDraftV2Schema.safeParse(evidenceDraft());
+  assert.equal(result.success, true);
+});
+
+// --- scenario #6: interview count vs. unique participant count are distinct fields, never derived from each other ---
+
+test("EvidenceRecordDraftV2Schema keeps interview_count and unique_participant_count as independent fields — a same person interviewed twice can report 2 interviews / 1 participant", () => {
+  const result = EvidenceRecordDraftV2Schema.safeParse(
+    evidenceDraft({
+      interview_count: { value: 2, known: true },
+      unique_participant_count: { value: 1, known: true },
+    }),
+  );
+  assert.equal(result.success, true);
+  if (result.success) {
+    assert.equal(result.data.interview_count.value, 2);
+    assert.equal(result.data.unique_participant_count.value, 1);
+  }
+});
+
+// --- scenario: purchase interest vs. intent vs. contract vs. actual payment are distinguished, not collapsed ---
+
+test("EvidenceRecordDraftV2Schema's purchase_signal distinguishes interest/intent/contract/payment and allows null", () => {
+  for (const signal of ["interest", "intent", "contract", "payment", null]) {
+    const result = EvidenceRecordDraftV2Schema.safeParse(evidenceDraft({ purchase_signal: signal }));
+    assert.equal(result.success, true, `expected ${signal} to be valid`);
+  }
+  const invalid = EvidenceRecordDraftV2Schema.safeParse(evidenceDraft({ purchase_signal: "maybe" }));
+  assert.equal(invalid.success, false);
+});
+
+test("EvidenceRecordDraftV2Schema rejects a count that carries a value but omits the known flag (the schema forces the model to commit to known/unknown, not just a bare number)", () => {
+  const result = EvidenceRecordDraftV2Schema.safeParse(
+    evidenceDraft({ interview_count: { value: 3 } as unknown as { value: number; known: boolean } }),
+  );
   assert.equal(result.success, false);
 });

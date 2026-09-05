@@ -15,6 +15,7 @@ import {
   searchResourcesByBottleneck,
   searchResourcesByBottleneckV2,
 } from "@/lib/diagnosis/service";
+import { listEvidenceRecordAttachmentLinks, listEvidenceRecords } from "@/lib/data/evidence-records";
 import type { Database } from "@/lib/types/database";
 
 type DiagnosisResultInsert = Database["public"]["Tables"]["diagnosis_results"]["Insert"];
@@ -167,6 +168,10 @@ export async function POST(_request: NextRequest, { params }: Params) {
         if (schemaVersion === 2) {
           const { files: attachmentFiles, results: attachmentLoadResults } =
             await loadAttachmentFiles(supabase, attachmentRows);
+          const [evidenceRecordRows, evidenceRecordAttachmentRows] = await Promise.all([
+            listEvidenceRecords(project.id, user.id),
+            listEvidenceRecordAttachmentLinks(project.id, user.id),
+          ]);
           const nowIso = new Date().toISOString();
           const context = buildContextV2({
             project,
@@ -175,6 +180,8 @@ export async function POST(_request: NextRequest, { params }: Params) {
             attachmentLoadResults,
             priorResults: priorResults ?? [],
             experimentRunRows: experimentRuns ?? [],
+            evidenceRecordRows,
+            evidenceRecordAttachmentRows,
             nowIso,
           });
 

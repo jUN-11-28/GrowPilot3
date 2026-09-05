@@ -9,14 +9,17 @@ import { EmptyState } from "@/components/ui/feedback";
 import { DeleteProjectButton } from "./delete-project-button";
 import { AttachmentsPanel } from "./attachments-panel";
 import { TechnicalContextPanel } from "./technical-context-panel";
+import { EvidenceRecordsPanel } from "./evidence-records-panel";
+import { EvidenceTypeEditor } from "./evidence-type-editor";
 import { requireUser } from "@/lib/auth";
 import { findProject, getProject } from "@/lib/data/projects";
 import { listResultsByProject, listSessions } from "@/lib/data/diagnosis";
 import { listAttachments } from "@/lib/data/attachments";
+import { listEvidenceRecordAttachmentLinks, listEvidenceRecords } from "@/lib/data/evidence-records";
 import { startDiagnosis } from "@/lib/actions/diagnosis";
-import { EVIDENCE_LABEL, PROJECT_STAGE_LABEL } from "@/lib/domain/constants";
+import { PROJECT_STAGE_LABEL } from "@/lib/domain/constants";
 import { formatDate } from "@/lib/utils";
-import type { SessionStatus } from "@/lib/types/database";
+import type { EvidenceRecordType, SessionStatus } from "@/lib/types/database";
 
 export async function generateMetadata({
   params,
@@ -47,11 +50,17 @@ export default async function ProjectPage({
   const user = await requireUser();
 
   const project = await getProject(projectId, user.id);
-  const [sessions, results, attachments] = await Promise.all([
-    listSessions(projectId, user.id),
-    listResultsByProject(projectId, user.id),
-    listAttachments(projectId, user.id),
-  ]);
+  const [sessions, results, attachments, evidenceRecords, evidenceRecordAttachmentLinks] =
+    await Promise.all([
+      listSessions(projectId, user.id),
+      listResultsByProject(projectId, user.id),
+      listAttachments(projectId, user.id),
+      listEvidenceRecords(projectId, user.id),
+      listEvidenceRecordAttachmentLinks(projectId, user.id),
+    ]);
+  const evidenceRecordTypes = project.evidence.filter(
+    (item): item is EvidenceRecordType => item !== "none",
+  );
 
   const latest = results[0];
   const resultBySession = new Map(results.map((row) => [row.session_id, row]));
@@ -115,16 +124,24 @@ export default async function ProjectPage({
           <Detail term="타깃 고객">{project.target_customer}</Detail>
           <Detail term="해결 방법">{project.solution}</Detail>
           <Detail term="확보한 Evidence">
-            {project.evidence.length === 0 ? (
-              <span className="text-ink-muted">선택하지 않음</span>
-            ) : (
-              <span className="flex flex-wrap gap-1.5">
-                {project.evidence.map((item) => (
-                  <Badge key={item}>{EVIDENCE_LABEL[item]}</Badge>
-                ))}
-              </span>
-            )}
+            <EvidenceTypeEditor projectId={project.id} evidence={project.evidence} />
           </Detail>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Evidence별 근거 자료"
+          description="선택한 Evidence 종류마다 실제로 무엇을 확인했는지 글이나 파일로 남겨두면 진단에 그대로 반영됩니다. 자료를 남기지 않으면 종류만 선택한 상태로 진단에 전달됩니다."
+        />
+        <CardBody>
+          <EvidenceRecordsPanel
+            projectId={project.id}
+            evidenceTypes={evidenceRecordTypes}
+            records={evidenceRecords}
+            attachmentLinks={evidenceRecordAttachmentLinks}
+            attachments={attachments}
+          />
         </CardBody>
       </Card>
 

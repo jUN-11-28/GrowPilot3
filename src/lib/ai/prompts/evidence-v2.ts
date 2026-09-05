@@ -17,7 +17,10 @@ ${SHARED_RULES_V2}
 - source_ref locator를 검증할 수 없으면 unverified 또는 unavailable로 표시한다.
 - 이전 AI 판단은 별도 자료로 인식하고 새 관찰 근거로 복원하지 않는다.
 - 충돌하는 자료는 양쪽 근거를 남긴다. 판단이 아니라 중요한 누락만 missing_evidence에 적는다.
-- 각 근거가 무엇을 뒷받침하며 무엇을 증명하지 못하는지 짧게 설명한다.`;
+- 각 근거가 무엇을 뒷받침하며 무엇을 증명하지 못하는지 짧게 설명한다.
+- 등록된 근거 자료(evidence_record)는 "창업자가 확인한 요약", "AI 초안(미확인)", "정리 안 됨" 상태를 구분해 다룬다. 창업자 확인은 객관적 검증이 아니다 — provenance를 founder_report로 두고 그 근거만으로 third_party_report 수준의 확실성을 부여하지 않는다.
+- 근거 자료에 연결된 첨부 파일은 그 근거 자료의 attachment 목록에도, 별도 첨부 자료 목록에도 같은 attachment_id로 나타날 수 있다. 같은 attachment_id를 두 번 별개 근거로 집계하지 않는다.
+- Evidence 종류를 선택만 하고 등록된 근거 자료가 없는 경우, 그 종류에 실제 근거가 없다는 뜻이다. 선택 자체를 근거로 쓰지 않는다.`;
 
 export function buildEvidencePromptV2(context: DiagnosisContextV2): string {
   return `${formatContextV2(context)}

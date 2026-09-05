@@ -1,14 +1,19 @@
 import {
   ATTACHMENT_KIND_LABEL,
   BUSINESS_MODEL_LABEL,
+  EVIDENCE_LABEL,
   TECHNICAL_MATURITY_LABEL,
   TECHNOLOGY_TYPE_LABEL,
 } from "@/lib/domain/constants";
-import type { SourceManifestEntry } from "@/lib/ai/schemas-v2";
+import type { EvidenceRecordDraftV2, SourceManifestEntry } from "@/lib/ai/schemas-v2";
 import type { AttachmentLoadResult } from "@/lib/diagnosis/service";
 import type {
   AttachmentKind,
   DiagnosisResultRow,
+  EvidenceRecordAnalysisStatus,
+  EvidenceRecordRow,
+  EvidenceRecordType,
+  EvidenceRecordUserContext,
   ExecutionConstraints,
   ProjectRow,
   TechnicalContext,
@@ -102,6 +107,30 @@ export interface ExperimentRunSummaryV2 {
   newConcern: string | null;
 }
 
+/** One evidence record's linked attachment, kept as a *reference* to the attachment's own manifest entry — never a second manifest entry for the same file (see buildContextV2's dedup note). */
+export interface EvidenceRecordAttachmentRefV2 {
+  sourceId: string;
+  fileName: string | null;
+  loadStatus: AttachmentLoadResult["status"];
+}
+
+export interface EvidenceRecordSummaryV2 {
+  sourceId: string;
+  evidenceType: EvidenceRecordType;
+  title: string;
+  body: string | null;
+  userContext: EvidenceRecordUserContext;
+  analysisStatus: EvidenceRecordAnalysisStatus;
+  version: number;
+  attachments: EvidenceRecordAttachmentRefV2[];
+  /** An AI draft exists, matches the current version, but the founder has not confirmed it — never presented as founder-verified. */
+  unconfirmedDraft: EvidenceRecordDraftV2 | null;
+  /** The founder's own confirmed/edited summary. Confirming means "this reads correctly to me", not an objective verification. */
+  confirmedSummary: EvidenceRecordDraftV2 | null;
+  /** The record's body/attachments changed after this confirmation was made — the confirmed summary may no longer describe the current content. */
+  confirmedStale: boolean;
+}
+
 export interface DiagnosisContextV2 {
   project: {
     sourceId: string;
@@ -114,6 +143,7 @@ export interface DiagnosisContextV2 {
   executionConstraints: ExecutionConstraints | null;
   answers: AnsweredQuestionV2[];
   attachments: AttachmentSummaryV2[];
+  evidenceRecords: EvidenceRecordSummaryV2[];
   priorReports: PriorReportSummaryV2[];
   experimentRuns: ExperimentRunSummaryV2[];
   sourceManifest: SourceManifestEntry[];
@@ -142,6 +172,8 @@ export function buildContextV2({
   attachmentLoadResults,
   priorResults,
   experimentRunRows = [],
+  evidenceRecordRows = [],
+  evidenceRecordAttachmentRows = [],
   nowIso,
 }: {
   project: ProjectRow;
@@ -154,6 +186,10 @@ export function buildContextV2({
   >[];
   /** Rows from `experiment_runs` (migration 0004) for prior results on this project — see submitExperimentResultV2. */
   experimentRunRows?: ExperimentRunContextRow[];
+  /** Rows from `evidence_records` (migration 0006) for this project. */
+  evidenceRecordRows?: EvidenceRecordRow[];
+  /** Rows from `evidence_record_attachments` (migration 0006) for this project's evidence records. */
+  evidenceRecordAttachmentRows?: { evidence_record_id: string; attachment_id: string }[];
   /** Injected rather than read from `Date.now()` so manifest timestamps are reproducible in tests. */
   nowIso: string;
 }): DiagnosisContextV2 {
@@ -270,6 +306,62 @@ export function buildContextV2({
     };
   });
 
+  // Evidence records reference attachment source_ids that were *already*
+  // added to sourceManifest above (source_type "attachment") — never a
+  // second manifest entry for the same file. This is the "ID 기준으로 처리해라,
+  // 중복 집계하지 않도록" rule (prompt doc §7): the same project_attachments
+  // row can be linked from an evidence record and still show up once in
+  // `attachments`/sourceManifest.
+  const attachmentById = new Map(attachmentRows.map((row) => [row.id, row]));
+  const linkedAttachmentIdsByRecord = new Map<string, string[]>();
+  for (const link of evidenceRecordAttachmentRows) {
+    const list = linkedAttachmentIdsByRecord.get(link.evidence_record_id) ?? [];
+    list.push(link.attachment_id);
+    linkedAttachmentIdsByRecord.set(link.evidence_record_id, list);
+  }
+
+  const evidenceRecords: EvidenceRecordSummaryV2[] = evidenceRecordRows.map((row) => {
+    const sourceId = `evidence_record:${row.id}`;
+    sourceManifest.push({
+      source_id: sourceId,
+      source_type: "evidence_record",
+      attachment_id: null,
+      file_name: null,
+      note: null,
+      created_at: row.updated_at,
+      load_status: "loaded",
+      load_error_code: null,
+    });
+
+    const linkedIds = linkedAttachmentIdsByRecord.get(row.id) ?? [];
+    const attachments: EvidenceRecordAttachmentRefV2[] = linkedIds
+      .filter((id) => attachmentById.has(id))
+      .map((id) => {
+        const attachmentRow = attachmentById.get(id)!;
+        const loadResult = loadResultByAttachmentId.get(id);
+        const status = loadResult?.status ?? (attachmentRow.note ? "note_only" : "failed");
+        return { sourceId: `attachment:${id}`, fileName: attachmentRow.file_name, loadStatus: status };
+      });
+
+    const hasFreshAiDraft = row.ai_draft !== null && row.ai_draft_source_version === row.source_version;
+    const isConfirmed = row.confirmed_at !== null && row.user_confirmed_summary !== null;
+
+    return {
+      sourceId,
+      evidenceType: row.evidence_type,
+      title: row.title,
+      body: row.body,
+      userContext: row.user_context,
+      analysisStatus: row.analysis_status,
+      version: row.source_version,
+      attachments,
+      unconfirmedDraft:
+        hasFreshAiDraft && !isConfirmed ? (row.ai_draft as unknown as EvidenceRecordDraftV2) : null,
+      confirmedSummary: isConfirmed ? (row.user_confirmed_summary as unknown as EvidenceRecordDraftV2) : null,
+      confirmedStale: isConfirmed && row.confirmed_source_version !== row.source_version,
+    };
+  });
+
   return {
     project: {
       sourceId: projectSourceId,
@@ -282,6 +374,7 @@ export function buildContextV2({
     executionConstraints: project.execution_constraints,
     answers: answerEntries,
     attachments: attachmentEntries,
+    evidenceRecords,
     priorReports,
     experimentRuns,
     sourceManifest,
@@ -372,6 +465,80 @@ export function formatAttachmentsV2(context: DiagnosisContextV2): string {
     .join("\n")}`;
 }
 
+function formatUserContext(ctx: EvidenceRecordUserContext): string {
+  const parts = [
+    `날짜: ${ctx.occurred_at ?? "모름"}`,
+    `대상: ${ctx.target_description ?? "모름"}`,
+    `인터뷰/응답 횟수: ${ctx.interview_count ?? "모름"}`,
+    `고유 참여자 수: ${ctx.unique_participant_count ?? "모름"}`,
+  ];
+  return parts.join(" · ");
+}
+
+function formatEvidenceRecordDraft(draft: EvidenceRecordDraftV2): string {
+  const lines = [
+    draft.what ? `  무엇: ${draft.what}` : null,
+    draft.when_text ? `  언제: ${draft.when_text}` : null,
+    draft.who_description ? `  대상: ${draft.who_description}` : null,
+    `  인터뷰/응답 횟수: ${draft.interview_count.known ? (draft.interview_count.value ?? "모름") : "모름"}`,
+    `  고유 참여자 수: ${draft.unique_participant_count.known ? (draft.unique_participant_count.value ?? "모름") : "모름"}`,
+    draft.purpose ? `  목적: ${draft.purpose}` : null,
+    draft.key_results.length > 0 ? `  결과: ${draft.key_results.join("; ")}` : null,
+    draft.duplicate_suspected.suspected
+      ? `  ※ 다른 근거 기록과 중복 가능성: ${draft.duplicate_suspected.reason ?? ""}`
+      : null,
+    draft.purchase_signal ? `  구매 신호: ${draft.purchase_signal}` : null,
+    `  요약: ${draft.summary}`,
+  ].filter((line): line is string => line !== null);
+  return lines.join("\n");
+}
+
+/**
+ * "선택만 함", "창업자 설명 있음(원문)", "원본 자료를 읽음(AI 정리 완료)"을
+ * 구분해 보여준다 (prompt doc §7) — 첨부 파일이 있다는 이유만으로 신뢰도를
+ * 올리지 않도록, 각 기록의 분석 상태와 창업자 확인 여부를 그대로 노출한다.
+ */
+export function formatEvidenceRecordsV2(context: DiagnosisContextV2): string {
+  if (context.evidenceRecords.length === 0) {
+    return "# 등록된 근거 자료 (Evidence 자료 등록)\n(등록된 근거 자료 없음 — Evidence 종류 선택만 있거나 아직 자료가 없음)";
+  }
+  return `# 등록된 근거 자료 (Evidence 자료 등록)\n${context.evidenceRecords
+    .map((record, index) => {
+      const label = EVIDENCE_LABEL[record.evidenceType];
+      const attachmentLines =
+        record.attachments.length === 0
+          ? "  첨부 파일 없음"
+          : record.attachments
+              .map(
+                (a) =>
+                  `  - [${a.sourceId}] ${a.fileName ?? "(파일명 없음)"} — ${
+                    a.loadStatus === "loaded" ? "내용 전달됨" : `읽기 불가 (${a.loadStatus})`
+                  }`,
+              )
+              .join("\n");
+
+      const analysisLine = (() => {
+        if (record.confirmedSummary) {
+          const staleNote = record.confirmedStale
+            ? " ※ 이후 원문/첨부가 수정되어 이 확인은 최신 내용 기준이 아닐 수 있음 — 다시 확인 필요"
+            : "";
+          return `  창업자가 확인한 요약 (확인 = 창업자가 맞다고 표시했다는 뜻, 객관적 검증 아님)${staleNote}\n${formatEvidenceRecordDraft(record.confirmedSummary)}`;
+        }
+        if (record.unconfirmedDraft) {
+          return `  AI 초안 (창업자 미확인 — 참고용, 확정된 근거로 취급하지 말 것)\n${formatEvidenceRecordDraft(record.unconfirmedDraft)}`;
+        }
+        return "  AI 정리 안 됨 — 원문/첨부만 있음";
+      })();
+
+      return `${index + 1}. [${label}] ${record.title} [source_id: ${record.sourceId}]
+  ${formatUserContext(record.userContext)}
+  원문: ${record.body ?? "(글 없음 — 첨부 파일만 있음)"}
+${attachmentLines}
+${analysisLine}`;
+    })
+    .join("\n\n")}`;
+}
+
 export function formatPriorReportsV2(context: DiagnosisContextV2): string {
   if (context.priorReports.length === 0) {
     return "# 이전 진단 리포트\n(이전 리포트 없음 — 첫 진단이다)";
@@ -414,6 +581,7 @@ export function formatContextV2(context: DiagnosisContextV2): string {
     formatProjectV2(context),
     formatPriorReportsV2(context),
     formatExperimentRunsV2(context),
+    formatEvidenceRecordsV2(context),
     formatAttachmentsV2(context),
     formatAnswersV2(context),
   ].join("\n\n");

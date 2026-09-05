@@ -10,6 +10,7 @@ import {
   ATTACHMENT_KIND_VALUES,
   MAX_ATTACHMENT_BYTES,
 } from "@/lib/domain/constants";
+import { sanitizeFileName } from "@/lib/utils";
 import type { AttachmentKind } from "@/lib/types/database";
 
 export interface AttachmentFormState {
@@ -21,11 +22,6 @@ const uploadSchema = z.object({
   kind: z.enum(ATTACHMENT_KIND_VALUES as [AttachmentKind, ...AttachmentKind[]]),
   note: z.string().trim().max(4000).optional(),
 });
-
-/** Storage keeps a filename usable in a path; the display name stays as-is in the DB. */
-function sanitizeFileName(name: string): string {
-  return name.replace(/[^\w.\-]+/g, "_").slice(-100);
-}
 
 export async function uploadAttachment(
   _prev: AttachmentFormState,

@@ -80,7 +80,7 @@ export function AttachmentsPanel({
         <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
           <Field label="분류" htmlFor="kind">
             <Select id="kind" name="kind" defaultValue="business_plan">
-              {ATTACHMENT_KINDS.map((option) => (
+              {ATTACHMENT_KINDS.filter((option) => option.value !== "evidence").map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

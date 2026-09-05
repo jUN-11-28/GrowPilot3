@@ -1,6 +1,8 @@
 import type {
   AttachmentKind,
   BusinessModel,
+  EvidenceRecordAnalysisStatus,
+  EvidenceRecordType,
   EvidenceType,
   GrowthStage,
   ProjectStage,
@@ -309,6 +311,10 @@ export const ATTACHMENT_KINDS: Option<AttachmentKind>[] = [
   { value: "concern", label: "고민되는 점", description: "지금 판단이 어려운 상황이나 질문" },
   { value: "verification", label: "검증 결과", description: "이전 실험을 실행한 결과" },
   { value: "other", label: "기타", description: "위에 해당하지 않는 참고 자료" },
+  // 사용자에게 별도 선택지로 노출하지 않는다 — Evidence 자료 등록 화면에서
+  // 자동으로 붙는 분류다. ATTACHMENT_KIND_LABEL이 모든 AttachmentKind를
+  // 커버하도록 여기 등재만 해 둔다.
+  { value: "evidence", label: "근거 자료", description: "Evidence 자료 등록에서 올린 파일" },
 ];
 
 export const ATTACHMENT_KIND_LABEL = labelMap(ATTACHMENT_KINDS);
@@ -341,6 +347,36 @@ export const GROWTH_STAGE_LABEL = labelMap(GROWTH_STAGES);
 
 export const PROJECT_STAGE_VALUES = PROJECT_STAGES.map((s) => s.value);
 export const EVIDENCE_VALUES = EVIDENCE_TYPES.map((e) => e.value);
+
+/**
+ * "Evidence별 근거 자료" — the evidence types a founder can actually attach
+ * detail (text/files) to. Same vocabulary as EVIDENCE_TYPES minus `"none"`,
+ * which by definition has no detail to record.
+ */
+export const EVIDENCE_RECORD_TYPES: Option<EvidenceRecordType>[] = EVIDENCE_TYPES.filter(
+  (e): e is Option<EvidenceRecordType> => e.value !== "none",
+);
+export const EVIDENCE_RECORD_TYPE_VALUES = EVIDENCE_RECORD_TYPES.map((e) => e.value) as [
+  EvidenceRecordType,
+  ...EvidenceRecordType[],
+];
+
+export const EVIDENCE_RECORD_ANALYSIS_STATUS_LABEL: Record<EvidenceRecordAnalysisStatus, string> = {
+  not_analyzed: "AI 정리 전",
+  analyzing: "AI가 정리하는 중",
+  completed: "AI 정리 완료",
+  failed: "AI 정리 실패",
+};
+
+/**
+ * 근거 자료(evidence_records)에 파일을 올릴 때 붙이는 project_attachments.kind
+ * 값. 기존 business_plan/financials/concern/verification/other 분류와는 별개다.
+ */
+export const EVIDENCE_ATTACHMENT_KIND = "evidence" as const;
+
+export const MAX_EVIDENCE_RECORD_FILES = 10;
+export const MAX_EVIDENCE_RECORD_TITLE_LENGTH = 200;
+export const MAX_EVIDENCE_RECORD_BODY_LENGTH = 20000;
 
 /**
  * The product promises three things after the experiment is named: 자원, 전문가,

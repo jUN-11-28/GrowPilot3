@@ -97,7 +97,25 @@ export type AttachmentKind =
   | "financials"
   | "concern"
   | "verification"
-  | "other";
+  | "other"
+  | "evidence";
+
+/** `evidence_records.evidence_type` — same vocabulary as `EvidenceType` minus `"none"`, which has no detail to record. */
+export type EvidenceRecordType = Exclude<EvidenceType, "none">;
+
+export type EvidenceRecordAnalysisStatus = "not_analyzed" | "analyzing" | "completed" | "failed";
+
+/**
+ * `evidence_records.user_context` — founder-declared/confirmed date · target ·
+ * headcount facts only, never AI-guessed. A missing/null field means "모름",
+ * never 0 or "".
+ */
+export type EvidenceRecordUserContext = {
+  occurred_at: string | null;
+  target_description: string | null;
+  interview_count: number | null;
+  unique_participant_count: number | null;
+};
 
 export type ProfileRow = {
   id: string;
@@ -273,6 +291,38 @@ export type ProjectAttachmentRow = {
   created_at: string;
 }
 
+export type EvidenceRecordRow = {
+  id: string;
+  project_id: string;
+  user_id: string;
+  evidence_type: EvidenceRecordType;
+  title: string;
+  body: string | null;
+  user_context: EvidenceRecordUserContext;
+  analysis_status: EvidenceRecordAnalysisStatus;
+  analysis_run_id: string | null;
+  analysis_lock_expires_at: string | null;
+  /** The model's own extraction (EvidenceRecordDraftV2, schemas-v2.ts). Only a fresh analysis run may write this — never a founder edit. */
+  ai_draft: Json | null;
+  ai_draft_prompt_version: string | null;
+  ai_draft_model_version: string | null;
+  ai_draft_source_version: number | null;
+  /** The founder's own confirmed/edited extraction. Confirming means "this reads correctly", not an objective verification. */
+  user_confirmed_summary: Json | null;
+  confirmed_at: string | null;
+  confirmed_source_version: number | null;
+  source_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EvidenceRecordAttachmentRow = {
+  evidence_record_id: string;
+  attachment_id: string;
+  user_id: string;
+  created_at: string;
+}
+
 export type ResourceAvailability = "actionable" | "reference_only" | "needs_verification";
 
 export type ResourceRow = {
@@ -376,6 +426,18 @@ export type Database = {
         > &
           Partial<ExperimentRunRow>,
         Partial<ExperimentRunRow>
+      >;
+      evidence_records: Table<
+        EvidenceRecordRow,
+        Pick<EvidenceRecordRow, "project_id" | "user_id" | "evidence_type" | "title"> &
+          Partial<EvidenceRecordRow>,
+        Partial<EvidenceRecordRow>
+      >;
+      evidence_record_attachments: Table<
+        EvidenceRecordAttachmentRow,
+        Pick<EvidenceRecordAttachmentRow, "evidence_record_id" | "attachment_id" | "user_id"> &
+          Partial<EvidenceRecordAttachmentRow>,
+        Partial<EvidenceRecordAttachmentRow>
       >;
     };
     Views: Record<string, never>;

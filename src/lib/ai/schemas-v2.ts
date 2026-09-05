@@ -71,6 +71,7 @@ export const sourceTypeV2 = z.enum([
   "attachment",
   "experiment_result",
   "prior_ai_report",
+  "evidence_record",
 ]);
 
 export const loadStatusV2 = z.enum([
@@ -96,7 +97,7 @@ export type SourceManifestEntry = z.infer<typeof SourceManifestEntrySchema>;
 
 const locatorStatusV2 = z.enum(["verified", "unverified", "unavailable"]);
 
-const sourceRefV2 = z.object({
+export const sourceRefV2 = z.object({
   source_id: z.string(),
   locator: z.string().nullable(),
   excerpt: z.string().nullable(),
@@ -450,3 +451,107 @@ export const ExperimentResultInputSchema = z.object({
   idempotencyKey: z.uuid(),
 });
 export type ExperimentResultInput = z.infer<typeof ExperimentResultInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Evidence records — "Evidence별 근거 자료 등록" (evidence_records table).
+//
+// UserEvidenceContextSchema is server-side INPUT validation (same category as
+// TechnicalContextSchema above — founder input, never sent to a model).
+// EvidenceRecordDraftV2Schema is the per-record AI extraction contract (model
+// output, sent as JSON Schema) — one common shape across every evidence_type;
+// the type-specific guidance (interview counts vs. revenue period/currency)
+// lives in the prompt, not in per-type schema branches, matching this file's
+// existing evidence/bottleneck/readiness pattern of enums that cut across
+// types rather than a schema per type.
+// ---------------------------------------------------------------------------
+
+/**
+ * Founder-declared/confirmed date · target · headcount facts for one evidence
+ * record. Every field defaults to "모름" (null), never 0 or "" — the founder
+ * either types it or leaves it blank, and a blank field is never coerced into
+ * a guessed value.
+ */
+export const UserEvidenceContextSchema = z.object({
+  occurred_at: z.string().trim().max(200).nullable().default(null),
+  target_description: z.string().trim().max(500).nullable().default(null),
+  interview_count: z.number().int().nonnegative().max(100000).nullable().default(null),
+  unique_participant_count: z.number().int().nonnegative().max(100000).nullable().default(null),
+});
+export type UserEvidenceContextInput = z.infer<typeof UserEvidenceContextSchema>;
+
+/**
+ * A count the model extracted, with an explicit "확인 가능" flag distinct from
+ * the number itself — `known: false` means "모름", and `value` must be null in
+ * that case (enforced in validate-evidence-record-v2.ts, not here — see this
+ * file's header note on why cross-field rules live outside these schemas).
+ * This is what makes rule 6's "인터뷰 횟수와 고유 참여자 수를 구분한다" and
+ * "고유 참여자 수를 확인할 수 없으면 모름으로 남긴다" representable: the model
+ * cannot express "unknown" by writing 0.
+ */
+const evidenceCountFieldV2 = z.object({
+  value: z.number().int().nonnegative().nullable(),
+  known: z.boolean(),
+});
+export type EvidenceCountFieldV2 = z.infer<typeof evidenceCountFieldV2>;
+
+const evidenceMetricV2 = z.object({
+  label: z.string(),
+  value: z.string(),
+  unit: z.string().nullable(),
+  source_refs: z.array(sourceRefV2).max(10),
+});
+
+const evidenceQuoteV2 = z.object({
+  text: z.string(),
+  speaker_role: z.string().nullable(),
+  source_refs: z.array(sourceRefV2).max(5),
+});
+
+const evidenceConflictV2 = z.object({
+  description: z.string(),
+  source_refs: z.array(sourceRefV2).max(10),
+});
+
+export const purchaseSignalV2 = z.enum(["interest", "intent", "contract", "payment"]);
+
+/**
+ * One evidence record's "AI로 정리" output. Written to `ai_draft` on a fresh
+ * analysis and, on confirmation, copied (verbatim or founder-edited) into
+ * `user_confirmed_summary` — the founder's confirmation is never treated as
+ * an objective verification (prompt doc rule in evidence-record-v2.ts).
+ */
+export const EvidenceRecordDraftV2Schema = z.object({
+  // 어떤 자료인지
+  what: z.string().nullable(),
+  // 언제 진행했는지 — 원문에 있는 표현 그대로. 추측한 날짜를 만들지 않는다.
+  when_text: z.string().nullable(),
+  // 누구를 대상으로 했는지
+  who_description: z.string().nullable(),
+  interview_count: evidenceCountFieldV2,
+  unique_participant_count: evidenceCountFieldV2,
+  // 무엇을 알아보려고 했는지
+  purpose: z.string().nullable(),
+  // 진행 방법과 조건
+  method: z.array(z.string()).max(10),
+  // 실제 결과 — 자유 서술
+  key_results: z.array(z.string()).max(20),
+  // 실제 결과 — 수치가 있는 항목 (기간/금액/통화/환불, 성공·실패 조건 등 자료
+  // 종류에 맞는 것만; 스키마는 공통이고 무엇을 뽑을지는 prompt가 안내한다)
+  metrics: z.array(evidenceMetricV2).max(20),
+  // 주요 발언
+  quotes: z.array(evidenceQuoteV2).max(20),
+  // 상반된 의견
+  conflicting_points: z.array(evidenceConflictV2).max(10),
+  // 아직 알 수 없는 점
+  unknowns: z.array(z.string()).max(20),
+  // 다른 근거 기록(원본 vs 요약본 등)과 중복 가능성 — 표시만 하고 서버가
+  // 자동으로 병합하지는 않는다.
+  duplicate_suspected: z.object({
+    suspected: z.boolean(),
+    reason: z.string().nullable(),
+  }),
+  // 구매 관심/구매 의향/계약/실제 결제 구분 — 해당 없으면 null.
+  purchase_signal: purchaseSignalV2.nullable(),
+  summary: z.string(),
+});
+export type EvidenceRecordDraftV2 = z.infer<typeof EvidenceRecordDraftV2Schema>;
